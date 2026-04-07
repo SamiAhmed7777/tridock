@@ -7,11 +7,15 @@ DATA_DIR="${TRI_DATA_DIR:-/tri/data}"
 BOOTSTRAP_DIR="${TRI_BOOTSTRAP_DIR:-/tri/bootstrap}"
 BIN_DIR="${TRI_BIN_DIR:-/tri/bin}"
 LIB_DIR="${TRI_LIB_DIR:-/tri/lib}"
+CACHE_DIR="${TRI_CACHE_DIR:-/tri/cache}"
 TRI_BIN="${TRI_BIN:-$BIN_DIR/trianglesd}"
-TRI_BIN_DOWNLOAD_URL="${TRI_BIN_DOWNLOAD_URL:-}"
+TRI_VERSION="${TRI_VERSION:-5.7.5}"
+TRI_RELEASE_BASE_URL="${TRI_RELEASE_BASE_URL:-https://github.com/TrianglesProject/triangles/releases/download}"
+TRI_RELEASE_FILENAME="${TRI_RELEASE_FILENAME:-triangles-${TRI_VERSION}-linux64.tar.gz}"
+TRI_RELEASE_URL="${TRI_RELEASE_URL:-${TRI_RELEASE_BASE_URL}/v${TRI_VERSION}/${TRI_RELEASE_FILENAME}}"
+TRI_BIN_DOWNLOAD_URL="${TRI_BIN_DOWNLOAD_URL:-$TRI_RELEASE_URL}"
 TRI_BIN_FALLBACK_URLS="${TRI_BIN_FALLBACK_URLS:-}"
 TRI_BIN_SHA256="${TRI_BIN_SHA256:-}"
-TRI_VERSION="${TRI_VERSION:-unknown}"
 TRI_PORT="${TRI_PORT:-24112}"
 MAX_CONNECTIONS="${TRI_MAX_CONNECTIONS:-64}"
 DBCACHE="${TRI_DBCACHE:-512}"
@@ -73,18 +77,52 @@ split_binary_sources() {
   fi
 }
 
-verify_binary_sha256() {
-  local file="$1"
-  if [ -z "$TRI_BIN_SHA256" ]; then
-    return 0
-  fi
+verify_sha256() {
+  local file="$1" expected="$2"
+  [ -z "$expected" ] && return 0
   local actual
   actual=$(sha256sum "$file" | awk '{print $1}')
-  [ "$actual" = "$TRI_BIN_SHA256" ]
+  [ "$actual" = "$expected" ]
+}
+
+find_extracted_binary() {
+  find "$1" -type f -name trianglesd | head -n 1
+}
+
+copy_extracted_libs() {
+  local src_root="$1"
+  mkdir -p "$LIB_DIR"
+  find "$src_root" -type f \( -name '*.so' -o -name '*.so.*' \) -print0 | while IFS= read -r -d '' lib; do
+    cp -f "$lib" "$LIB_DIR/"
+  done
+}
+
+install_from_archive() {
+  local archive="$1"
+  local tmpdir
+  tmpdir=$(mktemp -d "$CACHE_DIR/tri-extract.XXXXXX")
+  trap 'rm -rf "$tmpdir"' RETURN
+
+  case "$archive" in
+    *.tar.gz|*.tgz) tar xzf "$archive" -C "$tmpdir" ;;
+    *.tar.xz) tar xJf "$archive" -C "$tmpdir" ;;
+    *.zip) fail "zip TRI release archives are not supported yet" ;;
+    *) fail "Unknown TRI release archive format: $archive" ;;
+  esac
+
+  local extracted_bin
+  extracted_bin=$(find_extracted_binary "$tmpdir")
+  [ -n "$extracted_bin" ] || fail "No trianglesd binary found in extracted archive"
+
+  mkdir -p "$BIN_DIR" "$LIB_DIR"
+  cp -f "$extracted_bin" "$TRI_BIN"
+  chmod +x "$TRI_BIN"
+  copy_extracted_libs "$tmpdir"
+  log "Installed trianglesd from release archive for TRI $TRI_VERSION"
 }
 
 ensure_binary_present() {
-  mkdir -p "$BIN_DIR"
+  mkdir -p "$BIN_DIR" "$LIB_DIR" "$CACHE_DIR"
   if [ -x "$TRI_BIN" ]; then
     log "Using existing TRI binary at $TRI_BIN"
     return 0
@@ -93,27 +131,36 @@ ensure_binary_present() {
   split_binary_sources
   [ ${#BINARY_SOURCES[@]} -gt 0 ] || fail "trianglesd not found at $TRI_BIN and no download URLs configured"
 
-  local url tmpbin
-  tmpbin="$BIN_DIR/trianglesd.download"
+  local url tmpfile basename
   for url in "${BINARY_SOURCES[@]}"; do
     [ -n "$url" ] || continue
-    log "Trying TRI binary source: $url"
-    rm -f "$tmpbin"
-    if wget --tries=1 --timeout="$BOOTSTRAP_TIMEOUT" -O "$tmpbin" "$url"; then
-      chmod +x "$tmpbin"
-      if verify_binary_sha256 "$tmpbin"; then
-        mv "$tmpbin" "$TRI_BIN"
-        chmod +x "$TRI_BIN"
-        log "Fetched TRI binary successfully for version $TRI_VERSION"
-        return 0
+    basename=$(basename "${url%%\?*}")
+    [ -n "$basename" ] || basename="triangles-download"
+    tmpfile="$CACHE_DIR/$basename"
+    rm -f "$tmpfile"
+    log "Trying TRI artifact source: $url"
+    if wget --tries=1 --timeout="$BOOTSTRAP_TIMEOUT" -O "$tmpfile" "$url"; then
+      if verify_sha256 "$tmpfile" "$TRI_BIN_SHA256"; then
+        case "$tmpfile" in
+          *.tar.gz|*.tgz|*.tar.xz|*.zip)
+            install_from_archive "$tmpfile"
+            ;;
+          *)
+            cp -f "$tmpfile" "$TRI_BIN"
+            chmod +x "$TRI_BIN"
+            ;;
+        esac
+        [ -x "$TRI_BIN" ] && return 0
+        warn "TRI artifact downloaded from $url but no runnable binary was installed"
+      else
+        warn "Downloaded TRI artifact failed SHA256 verification from $url"
       fi
-      warn "Downloaded TRI binary failed SHA256 verification from $url"
     else
-      warn "Failed to fetch TRI binary from $url"
+      warn "Failed to fetch TRI artifact from $url"
     fi
   done
 
-  fail "Unable to obtain trianglesd binary"
+  fail "Unable to obtain trianglesd binary or release artifact"
 }
 
 require_binary() {
@@ -123,8 +170,8 @@ require_binary() {
 }
 
 write_config() {
-  mkdir -p "$DATA_DIR" "$BOOTSTRAP_DIR" /var/lib/tor /var/log/tri
-  cat > "$CONF_FILE" <<EOF
+  mkdir -p "$DATA_DIR" "$BOOTSTRAP_DIR" /var/lib/tor /var/log/tri "$CACHE_DIR"
+  cat > "$CONF_FILE" <<CFG
 rpcuser=$RPC_USER
 rpcpassword=$RPC_PASSWORD
 rpcport=$RPC_PORT
@@ -134,14 +181,14 @@ daemon=0
 printtoconsole=1
 maxconnections=$MAX_CONNECTIONS
 dbcache=$DBCACHE
-EOF
+CFG
 
   if [ "$TOR_ENABLED" = "1" ]; then
-    cat >> "$CONF_FILE" <<EOF
+    cat >> "$CONF_FILE" <<CFG
 proxy=127.0.0.1:9050
 listenonion=1
 tor=127.0.0.1:9050
-EOF
+CFG
   fi
 
   if [ "$STAKE_ENABLED" = "1" ]; then
@@ -165,10 +212,10 @@ EOF
 
   case "$MODE" in
     seed)
-      cat >> "$CONF_FILE" <<EOF
+      cat >> "$CONF_FILE" <<CFG
 upnp=0
 discover=1
-EOF
+CFG
       ;;
     staking)
       echo "staking=1" >> "$CONF_FILE"
