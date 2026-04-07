@@ -158,4 +158,4 @@ Rules for the project:
 
 ## Notes
 
-TRIdock now prefers the real versioned TRI GitHub release package by default and can install `trianglesd` from an archive or `.deb` when the binary is not already present. Local mounts are still supported as overrides or fallbacks.
+TRIdock now prefers the real versioned TRI GitHub release package by default and runs on a Debian-compatible base so the packaged TRI daemon matches normal Linux machines more closely. It can install `trianglesd` from an archive or `.deb` when the binary is not already present. Local mounts are still supported as overrides or fallbacks.

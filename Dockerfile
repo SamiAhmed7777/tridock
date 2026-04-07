@@ -1,19 +1,25 @@
-FROM alpine:3.19
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache \
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
-    bind-tools \
+    ca-certificates \
     coreutils \
     curl \
+    dnsutils \
     jq \
-    libarchive-tools \
-    libstdc++ \
+    libssl3 \
     netcat-openbsd \
     openssl \
     procps \
     tar \
     tor \
-    wget
+    wget \
+    xz-utils \
+    binutils \
+    dpkg \
+ && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /tri/bin /tri/lib /tri/data /tri/bootstrap /var/lib/tor /var/log/tri /tri/cache
 
