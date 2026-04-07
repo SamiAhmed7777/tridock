@@ -17,7 +17,8 @@ TRIdock is a Docker-first Triangles node image with Tor support, auto-bootstrap,
 - Checks for existing chain data before startup
 - If chain data is missing or obviously bad, downloads bootstrap data automatically
 - Verifies extracted bootstrap data passes minimum sanity checks before trusting it
-- Uses environment variables for mode, bootstrap URLs, ports, staking, and extra args
+- Can fetch the TRI daemon binary from configured URLs if it is not already mounted
+- Uses environment variables for mode, bootstrap URLs, binary sources, ports, staking, and extra args
 - Includes a container healthcheck so bad starts are visible quickly
 
 ## Quick start

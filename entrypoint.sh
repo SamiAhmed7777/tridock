@@ -8,6 +8,10 @@ BOOTSTRAP_DIR="${TRI_BOOTSTRAP_DIR:-/tri/bootstrap}"
 BIN_DIR="${TRI_BIN_DIR:-/tri/bin}"
 LIB_DIR="${TRI_LIB_DIR:-/tri/lib}"
 TRI_BIN="${TRI_BIN:-$BIN_DIR/trianglesd}"
+TRI_BIN_DOWNLOAD_URL="${TRI_BIN_DOWNLOAD_URL:-}"
+TRI_BIN_FALLBACK_URLS="${TRI_BIN_FALLBACK_URLS:-}"
+TRI_BIN_SHA256="${TRI_BIN_SHA256:-}"
+TRI_VERSION="${TRI_VERSION:-unknown}"
 TRI_PORT="${TRI_PORT:-24112}"
 MAX_CONNECTIONS="${TRI_MAX_CONNECTIONS:-64}"
 DBCACHE="${TRI_DBCACHE:-512}"
@@ -57,7 +61,63 @@ split_sources() {
   fi
 }
 
+split_binary_sources() {
+  local raw="$TRI_BIN_FALLBACK_URLS"
+  BINARY_SOURCES=()
+  if [ -n "$TRI_BIN_DOWNLOAD_URL" ]; then
+    BINARY_SOURCES+=("$TRI_BIN_DOWNLOAD_URL")
+  fi
+  if [ -n "$raw" ]; then
+    IFS=',' read -r -a EXTRA_BINARY_SOURCES <<< "$raw"
+    BINARY_SOURCES+=("${EXTRA_BINARY_SOURCES[@]}")
+  fi
+}
+
+verify_binary_sha256() {
+  local file="$1"
+  if [ -z "$TRI_BIN_SHA256" ]; then
+    return 0
+  fi
+  local actual
+  actual=$(sha256sum "$file" | awk '{print $1}')
+  [ "$actual" = "$TRI_BIN_SHA256" ]
+}
+
+ensure_binary_present() {
+  mkdir -p "$BIN_DIR"
+  if [ -x "$TRI_BIN" ]; then
+    log "Using existing TRI binary at $TRI_BIN"
+    return 0
+  fi
+
+  split_binary_sources
+  [ ${#BINARY_SOURCES[@]} -gt 0 ] || fail "trianglesd not found at $TRI_BIN and no download URLs configured"
+
+  local url tmpbin
+  tmpbin="$BIN_DIR/trianglesd.download"
+  for url in "${BINARY_SOURCES[@]}"; do
+    [ -n "$url" ] || continue
+    log "Trying TRI binary source: $url"
+    rm -f "$tmpbin"
+    if wget --tries=1 --timeout="$BOOTSTRAP_TIMEOUT" -O "$tmpbin" "$url"; then
+      chmod +x "$tmpbin"
+      if verify_binary_sha256 "$tmpbin"; then
+        mv "$tmpbin" "$TRI_BIN"
+        chmod +x "$TRI_BIN"
+        log "Fetched TRI binary successfully for version $TRI_VERSION"
+        return 0
+      fi
+      warn "Downloaded TRI binary failed SHA256 verification from $url"
+    else
+      warn "Failed to fetch TRI binary from $url"
+    fi
+  done
+
+  fail "Unable to obtain trianglesd binary"
+}
+
 require_binary() {
+  ensure_binary_present
   [ -x "$TRI_BIN" ] || fail "trianglesd not found or not executable at $TRI_BIN"
   export LD_LIBRARY_PATH="$LIB_DIR:${LD_LIBRARY_PATH:-}"
 }

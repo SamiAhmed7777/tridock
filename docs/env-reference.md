@@ -15,6 +15,10 @@
 | `TRI_BIN_DIR` | `/tri/bin` | Mounted binary directory |
 | `TRI_LIB_DIR` | `/tri/lib` | Mounted shared library directory |
 | `TRI_BIN` | `/tri/bin/trianglesd` | trianglesd binary path |
+| `TRI_BIN_DOWNLOAD_URL` | empty | Primary URL to fetch `trianglesd` if not mounted |
+| `TRI_BIN_FALLBACK_URLS` | empty | Comma-separated fallback binary URLs |
+| `TRI_BIN_SHA256` | empty | Expected SHA256 for downloaded binary |
+| `TRI_VERSION` | `unknown` | TRI version label for logs/releases |
 | `TRI_PORT` | `24112` | P2P port |
 | `TRI_MAX_CONNECTIONS` | `64` | Max peer count |
 | `TRI_DBCACHE` | `512` | DB cache |
