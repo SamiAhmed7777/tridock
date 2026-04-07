@@ -11,7 +11,9 @@ TRI_BIN="${TRI_BIN:-$BIN_DIR/trianglesd}"
 TRI_PORT="${TRI_PORT:-24112}"
 MAX_CONNECTIONS="${TRI_MAX_CONNECTIONS:-64}"
 DBCACHE="${TRI_DBCACHE:-512}"
-BOOTSTRAP_TIMEOUT="${TRI_BOOTSTRAP_TIMEOUT:-60}"
+BOOTSTRAP_TIMEOUT="${TRI_BOOTSTRAP_TIMEOUT:-30}"
+BOOTSTRAP_MIN_BLOCK_BYTES="${TRI_BOOTSTRAP_MIN_BLOCK_BYTES:-100000000}"
+BOOTSTRAP_MIN_LDB_COUNT="${TRI_BOOTSTRAP_MIN_LDB_COUNT:-300}"
 TOR_ENABLED="${TRI_TOR_ENABLED:-1}"
 BOOTSTRAP_ENABLED="${TRI_BOOTSTRAP_ENABLED:-1}"
 PREFER_BOOTSTRAP="${TRI_PREFER_BOOTSTRAP:-1}"
@@ -24,15 +26,27 @@ EXTERNAL_IP="${TRI_EXTERNAL_IP:-}"
 EXTRA_ARGS="${TRI_EXTRA_ARGS:-}"
 CONF_FILE="$DATA_DIR/triangles.conf"
 BOOTSTRAP_FILE="$BOOTSTRAP_DIR/bootstrap.tar.gz"
+TOR_LOG="/tmp/tor.log"
 
 DEFAULT_BOOTSTRAP_SOURCES=(
   "http://100.104.4.5:8081/bootstrap-new.tar.gz"
   "http://bootstrap.cryptographic-triangles.org:8080/triangles-bootstrap.tar.gz"
 )
 
+TRI_PID=""
+
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$NODE_NAME] $*"; }
 warn() { log "WARN: $*"; }
 fail() { log "ERROR: $*"; exit 1; }
+
+cleanup() {
+  if [ -n "$TRI_PID" ] && kill -0 "$TRI_PID" >/dev/null 2>&1; then
+    log "Stopping trianglesd..."
+    kill -TERM "$TRI_PID" >/dev/null 2>&1 || true
+    wait "$TRI_PID" || true
+  fi
+}
+trap cleanup EXIT INT TERM
 
 split_sources() {
   local raw="${TRI_BOOTSTRAP_URLS:-}"
@@ -66,7 +80,7 @@ EOF
     cat >> "$CONF_FILE" <<EOF
 proxy=127.0.0.1:9050
 listenonion=1
-onlynet=ipv4
+tor=127.0.0.1:9050
 EOF
   fi
 
@@ -108,7 +122,11 @@ start_tor() {
     return 0
   fi
   log "Starting Tor..."
-  tor --RunAsDaemon 1 --SocksPort 9050 --DataDirectory /var/lib/tor >/tmp/tor.log 2>&1 || warn "Tor failed to start; continuing without confirmed Tor health"
+  tor --RunAsDaemon 1 --SocksPort 9050 --DataDirectory /var/lib/tor >"$TOR_LOG" 2>&1 || warn "Tor failed to start; continuing without confirmed Tor health"
+  sleep 2
+  if ! pgrep -x tor >/dev/null 2>&1; then
+    warn "Tor does not appear to be running after startup"
+  fi
 }
 
 chain_present() {
@@ -119,12 +137,18 @@ chain_looks_sane() {
   chain_present || return 1
   local blk_size ldb_count
   blk_size=$(stat -c%s "$DATA_DIR/blk0001.dat" 2>/dev/null || echo 0)
-  [ "$blk_size" -ge 1000000 ] || return 1
+  [ "$blk_size" -ge "$BOOTSTRAP_MIN_BLOCK_BYTES" ] || return 1
   if [ -d "$DATA_DIR/txleveldb" ]; then
     ldb_count=$(find "$DATA_DIR/txleveldb" -name '*.ldb' 2>/dev/null | wc -l)
-    [ "$ldb_count" -ge 100 ] || return 1
+    [ "$ldb_count" -ge "$BOOTSTRAP_MIN_LDB_COUNT" ] || return 1
+  else
+    return 1
   fi
   return 0
+}
+
+reset_chain_dirs() {
+  rm -rf "$DATA_DIR/txleveldb" "$DATA_DIR/database" "$DATA_DIR/blk0001.dat" "$DATA_DIR/peers.dat" "$DATA_DIR"/*.log 2>/dev/null || true
 }
 
 bootstrap_chain() {
@@ -132,20 +156,29 @@ bootstrap_chain() {
   split_sources
   mkdir -p "$BOOTSTRAP_DIR"
   log "Bootstrapping chain data..."
-  rm -rf "$DATA_DIR/txleveldb" "$DATA_DIR/database" "$DATA_DIR/blk0001.dat" "$DATA_DIR/peers.dat" "$DATA_DIR"/*.log 2>/dev/null || true
+  reset_chain_dirs
 
   local source
   for source in "${BOOTSTRAP_SOURCES[@]}"; do
     [ -n "$source" ] || continue
     log "Trying bootstrap source: $source"
-    if wget --timeout="$BOOTSTRAP_TIMEOUT" -O "$BOOTSTRAP_FILE" "$source"; then
+    rm -f "$BOOTSTRAP_FILE"
+    if wget --tries=1 --timeout="$BOOTSTRAP_TIMEOUT" -O "$BOOTSTRAP_FILE" "$source"; then
       log "Download complete. Extracting bootstrap archive..."
-      tar xzf "$BOOTSTRAP_FILE" -C "$DATA_DIR" --strip-components=1
-      rm -f "$BOOTSTRAP_FILE"
-      log "Bootstrap extracted."
-      return 0
+      reset_chain_dirs
+      if tar xzf "$BOOTSTRAP_FILE" -C "$DATA_DIR" --strip-components=1; then
+        rm -f "$BOOTSTRAP_FILE"
+        if chain_looks_sane; then
+          log "Bootstrap extracted and passed sanity check."
+          return 0
+        fi
+        warn "Extracted bootstrap from $source but chain sanity check failed"
+      else
+        warn "Extraction failed for bootstrap from $source"
+      fi
+    else
+      warn "Bootstrap source failed: $source"
     fi
-    warn "Bootstrap source failed: $source"
   done
 
   warn "All bootstrap sources failed. Falling back to peer sync."
@@ -182,7 +215,9 @@ build_args() {
 run_node() {
   build_args
   log "Starting Triangles node in $MODE mode..."
-  "$TRI_BIN" "${TRI_ARGS[@]}"
+  "$TRI_BIN" "${TRI_ARGS[@]}" &
+  TRI_PID=$!
+  wait "$TRI_PID"
 }
 
 main() {

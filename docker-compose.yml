@@ -9,9 +9,13 @@ services:
       - "24112:24112/udp"
     environment:
       TRI_MODE: full
+      TRI_NODE_NAME: tridock
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
       TRI_PREFER_BOOTSTRAP: "1"
+      TRI_BOOTSTRAP_TIMEOUT: "30"
+      TRI_BOOTSTRAP_MIN_BLOCK_BYTES: "100000000"
+      TRI_BOOTSTRAP_MIN_LDB_COUNT: "300"
       TRI_BOOTSTRAP_URLS: "http://100.104.4.5:8081/bootstrap-new.tar.gz,http://bootstrap.cryptographic-triangles.org:8080/triangles-bootstrap.tar.gz"
       TRI_RPCUSER: tri
       TRI_RPCPASSWORD: change-me

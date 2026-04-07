@@ -6,7 +6,9 @@ RUN apk add --no-cache \
     coreutils \
     curl \
     jq \
+    netcat-openbsd \
     openssl \
+    procps \
     tar \
     tor \
     wget
@@ -19,5 +21,8 @@ RUN chmod +x /entrypoint.sh
 VOLUME ["/tri/data", "/tri/bootstrap", "/tri/bin", "/tri/lib"]
 
 EXPOSE 24112/tcp 24112/udp
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD test -x /tri/bin/trianglesd && pgrep -x trianglesd >/dev/null || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
