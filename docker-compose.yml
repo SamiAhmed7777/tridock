@@ -18,11 +18,11 @@ services:
       TRI_BOOTSTRAP_MIN_BLOCK_BYTES: "100000000"
       TRI_BOOTSTRAP_MIN_LDB_COUNT: "300"
       TRI_BOOTSTRAP_URLS: "http://100.104.4.5:8081/bootstrap-new.tar.gz,http://bootstrap.cryptographic-triangles.org:8080/triangles-bootstrap.tar.gz"
-      TRI_RELEASE_BASE_URL: "https://github.com/TrianglesProject/triangles/releases/download"
-      TRI_RELEASE_FILENAME: "triangles-5.7.5-linux64.tar.gz"
+      TRI_RELEASE_BASE_URL: "https://github.com/SamiAhmed7777/triangles_v5/releases/download"
+      TRI_RELEASE_FILENAME: "cryptographic-triangles-daemon_5.7.5_amd64.deb"
       TRI_BIN_DOWNLOAD_URL: ""
       TRI_BIN_FALLBACK_URLS: ""
-      TRI_BIN_SHA256: ""
+      TRI_BIN_SHA256: "696f1ae93ef9306eb0227e04f6704d17e610207552eb6ce8c7fa091f196f7500"
       TRI_RPCUSER: tri
       TRI_RPCPASSWORD: change-me
       TRI_RPCPORT: "19112"

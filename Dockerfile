@@ -6,6 +6,7 @@ RUN apk add --no-cache \
     coreutils \
     curl \
     jq \
+    libarchive-tools \
     libstdc++ \
     netcat-openbsd \
     openssl \

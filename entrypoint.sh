@@ -10,12 +10,12 @@ LIB_DIR="${TRI_LIB_DIR:-/tri/lib}"
 CACHE_DIR="${TRI_CACHE_DIR:-/tri/cache}"
 TRI_BIN="${TRI_BIN:-$BIN_DIR/trianglesd}"
 TRI_VERSION="${TRI_VERSION:-5.7.5}"
-TRI_RELEASE_BASE_URL="${TRI_RELEASE_BASE_URL:-https://github.com/TrianglesProject/triangles/releases/download}"
-TRI_RELEASE_FILENAME="${TRI_RELEASE_FILENAME:-triangles-${TRI_VERSION}-linux64.tar.gz}"
+TRI_RELEASE_BASE_URL="${TRI_RELEASE_BASE_URL:-https://github.com/SamiAhmed7777/triangles_v5/releases/download}"
+TRI_RELEASE_FILENAME="${TRI_RELEASE_FILENAME:-cryptographic-triangles-daemon_${TRI_VERSION}_amd64.deb}"
 TRI_RELEASE_URL="${TRI_RELEASE_URL:-${TRI_RELEASE_BASE_URL}/v${TRI_VERSION}/${TRI_RELEASE_FILENAME}}"
 TRI_BIN_DOWNLOAD_URL="${TRI_BIN_DOWNLOAD_URL:-$TRI_RELEASE_URL}"
 TRI_BIN_FALLBACK_URLS="${TRI_BIN_FALLBACK_URLS:-}"
-TRI_BIN_SHA256="${TRI_BIN_SHA256:-}"
+TRI_BIN_SHA256="${TRI_BIN_SHA256:-696f1ae93ef9306eb0227e04f6704d17e610207552eb6ce8c7fa091f196f7500}"
 TRI_PORT="${TRI_PORT:-24112}"
 MAX_CONNECTIONS="${TRI_MAX_CONNECTIONS:-64}"
 DBCACHE="${TRI_DBCACHE:-512}"
@@ -106,6 +106,7 @@ install_from_archive() {
   case "$archive" in
     *.tar.gz|*.tgz) tar xzf "$archive" -C "$tmpdir" ;;
     *.tar.xz) tar xJf "$archive" -C "$tmpdir" ;;
+    *.deb) bsdtar -xf "$archive" -C "$tmpdir" ;;
     *.zip) fail "zip TRI release archives are not supported yet" ;;
     *) fail "Unknown TRI release archive format: $archive" ;;
   esac
