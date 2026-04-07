@@ -1,0 +1,29 @@
+services:
+  tridock:
+    build: .
+    image: samiahmed7777/tridock:latest
+    container_name: tridock
+    restart: unless-stopped
+    ports:
+      - "24112:24112/tcp"
+      - "24112:24112/udp"
+    environment:
+      TRI_MODE: full
+      TRI_TOR_ENABLED: "1"
+      TRI_BOOTSTRAP_ENABLED: "1"
+      TRI_PREFER_BOOTSTRAP: "1"
+      TRI_BOOTSTRAP_URLS: "http://100.104.4.5:8081/bootstrap-new.tar.gz,http://bootstrap.cryptographic-triangles.org:8080/triangles-bootstrap.tar.gz"
+      TRI_RPCUSER: tri
+      TRI_RPCPASSWORD: change-me
+      TRI_RPCPORT: "19112"
+      TRI_MAX_CONNECTIONS: "64"
+      TRI_DBCACHE: "512"
+    volumes:
+      - tri_data:/tri/data
+      - tri_bootstrap:/tri/bootstrap
+      - ./tri-bin:/tri/bin:ro
+      - ./tri-lib:/tri/lib:ro
+
+volumes:
+  tri_data:
+  tri_bootstrap:

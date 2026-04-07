@@ -1,0 +1,26 @@
+services:
+  tridock-seed:
+    image: samiahmed7777/tridock:latest
+    container_name: tridock-seed
+    restart: unless-stopped
+    ports:
+      - "24112:24112/tcp"
+      - "24112:24112/udp"
+    environment:
+      TRI_MODE: seed
+      TRI_NODE_NAME: tridock-seed
+      TRI_TOR_ENABLED: "1"
+      TRI_BOOTSTRAP_ENABLED: "1"
+      TRI_BOOTSTRAP_URLS: "http://100.104.4.5:8081/bootstrap-new.tar.gz,http://bootstrap.cryptographic-triangles.org:8080/triangles-bootstrap.tar.gz"
+      TRI_MAX_CONNECTIONS: "128"
+      TRI_RPCUSER: tri
+      TRI_RPCPASSWORD: change-me
+    volumes:
+      - tri_seed_data:/tri/data
+      - tri_seed_bootstrap:/tri/bootstrap
+      - ./tri-bin:/tri/bin:ro
+      - ./tri-lib:/tri/lib:ro
+
+volumes:
+  tri_seed_data:
+  tri_seed_bootstrap:

@@ -1,0 +1,153 @@
+# TRIdock
+
+TRIdock is a Docker-first Triangles node image with Tor support, auto-bootstrap, and sensible defaults for bringing up a fresh node quickly on any machine.
+
+## Goals
+
+- Run a full TRI node in Docker with minimal setup
+- Prefer Sami's bootstrap source so fresh nodes land on the intended chain quickly
+- Support full node, seed node, and staking-oriented setups from the same image
+- Keep runtime data in volumes and binaries/libs mounted cleanly
+- Make recovery and redeploy simple
+
+## What it does
+
+- Starts `trianglesd` inside Docker
+- Optionally starts Tor inside the container
+- Checks for existing chain data before startup
+- If chain data is missing or obviously bad, downloads bootstrap data automatically
+- Uses environment variables for mode, bootstrap URLs, ports, staking, and extra args
+
+## Quick start
+
+### 1. Put the binary and libs beside the compose file
+
+Create:
+
+- `./tri-bin/trianglesd`
+- `./tri-lib/` containing required TRI shared libraries
+
+### 2. Start it
+
+```bash
+docker compose up -d --build
+```
+
+### 3. Watch logs
+
+```bash
+docker logs -f tridock
+```
+
+## Modes
+
+### Full node
+Default:
+
+```yaml
+environment:
+  TRI_MODE: full
+```
+
+### Seed node
+
+```yaml
+environment:
+  TRI_MODE: seed
+  TRI_MAX_CONNECTIONS: "128"
+```
+
+### Staking node
+
+```yaml
+environment:
+  TRI_MODE: staking
+  TRI_STAKE_ENABLED: "1"
+```
+
+## Bootstrap behavior
+
+By default TRIdock prefers this source first:
+
+- `http://100.104.4.5:8081/bootstrap-new.tar.gz`
+
+Fallback:
+
+- `http://bootstrap.cryptographic-triangles.org:8080/triangles-bootstrap.tar.gz`
+
+Override with:
+
+```yaml
+environment:
+  TRI_BOOTSTRAP_URLS: "http://source1/file.tar.gz,http://source2/file.tar.gz"
+```
+
+## Environment variables
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `TRI_MODE` | `full` | `full`, `seed`, or `staking` |
+| `TRI_TOR_ENABLED` | `1` | Start Tor SOCKS proxy |
+| `TRI_BOOTSTRAP_ENABLED` | `1` | Download bootstrap if needed |
+| `TRI_BOOTSTRAP_URLS` | built-in list | Comma-separated bootstrap URLs |
+| `TRI_PREFER_BOOTSTRAP` | `1` | Prefer the configured bootstrap path |
+| `TRI_MAX_CONNECTIONS` | `64` | Max peer connections |
+| `TRI_DBCACHE` | `512` | DB cache size |
+| `TRI_RPCUSER` | `tri` | RPC username |
+| `TRI_RPCPASSWORD` | `tri` | RPC password |
+| `TRI_RPCPORT` | `19112` | RPC port |
+| `TRI_PORT` | `24112` | P2P port |
+| `TRI_STAKE_ENABLED` | `0` | Enable staking config |
+| `TRI_ADDNODE` | empty | Comma-separated addnode list |
+| `TRI_EXTERNAL_IP` | empty | External IP hint |
+| `TRI_EXTRA_ARGS` | empty | Extra raw trianglesd args |
+
+## Volumes
+
+- `/tri/data` — blockchain + wallet data
+- `/tri/bootstrap` — temporary bootstrap archive staging
+- `/tri/bin` — mounted `trianglesd` binary
+- `/tri/lib` — mounted required TRI libs
+
+## Backups
+
+For staking or wallet-bearing nodes, back up the data volume regularly. At minimum preserve:
+
+- `wallet.dat`
+- `triangles.conf`
+- chain data if you want fast restoration
+
+## Guides
+
+See:
+
+- `docs/full-node.md`
+- `docs/seed-node.md`
+- `docs/staking.md`
+- `docs/recovery.md`
+- `docs/env-reference.md`
+
+## Publishing
+
+Planned canonical image:
+
+- `samiahmed7777/tridock:latest`
+
+## Release and Upstream Tracking Policy
+
+TRIdock should track upstream **TRI** releases closely.
+
+Rules for the project:
+
+- Always style the project name as **TRIdock** and refer to the coin/daemon as **TRI** when writing docs.
+- Keep the TRI daemon version explicit in build inputs and release notes.
+- When `trianglesd` is updated upstream, TRIdock should be refreshed promptly so the container does not drift behind the network.
+- Publish image tags for specific TRI versions, for example:
+  - `samiahmed7777/tridock:5.7.5`
+  - `samiahmed7777/tridock:latest`
+- Document where the bundled or mounted TRI binary/libs came from for each release.
+- Add automation later so new TRI releases trigger a TRIdock rebuild/review flow.
+
+## Notes
+
+This image currently assumes you provide a working `trianglesd` binary and compatible shared libs via mounted paths. A later revision can embed release artifacts directly once packaging is standardized.
