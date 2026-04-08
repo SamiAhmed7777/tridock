@@ -357,7 +357,7 @@ require_binary() {
 }
 
 write_config() {
-  mkdir -p "$DATA_DIR" "$BOOTSTRAP_DIR" /var/lib/tor /var/log/tri "$CACHE_DIR" "$STATE_DIR"
+  mkdir -p "$DATA_DIR" "$BOOTSTRAP_DIR" "$CACHE_DIR" "$STATE_DIR" /tri/tor /var/log/tri
   cat > "$CONF_FILE" <<CFG
 rpcuser=$RPC_USER
 rpcpassword=$RPC_PASSWORD
@@ -416,7 +416,9 @@ start_tor() {
     return 0
   fi
   log "Starting Tor..."
-  tor --RunAsDaemon 1 --SocksPort 9050 --DataDirectory /var/lib/tor >"$TOR_LOG" 2>&1 || warn "Tor failed to start; continuing without confirmed Tor health"
+  mkdir -p /tri/tor
+  chmod 700 /tri/tor || true
+  tor --RunAsDaemon 1 --SocksPort 9050 --DataDirectory /tri/tor >"$TOR_LOG" 2>&1 || warn "Tor failed to start; continuing without confirmed Tor health"
   sleep 2
   if ! pgrep -x tor >/dev/null 2>&1; then
     warn "Tor does not appear to be running after startup"
@@ -457,7 +459,18 @@ bootstrap_chain() {
   reset_chain_dirs
 
   local source
+  local all_sources=()
   for source in "${BOOTSTRAP_SOURCES[@]}"; do
+    [ -n "$source" ] || continue
+    all_sources+=("$source")
+    case "$source" in
+      http://bootstrap.cryptographic-triangles.org:8080/*)
+        all_sources+=("http://host.docker.internal:8080/tri-bootstrap.tar.gz" "http://172.17.0.1:8080/tri-bootstrap.tar.gz")
+        ;;
+    esac
+  done
+
+  for source in "${all_sources[@]}"; do
     [ -n "$source" ] || continue
     log "Trying bootstrap source: $source"
     set_bootstrap_source "$source"
