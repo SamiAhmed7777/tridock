@@ -127,7 +127,7 @@ app.post('/api/rpc', express.json(), async (req, res) => {
 })
 
 app.use(express.static(distDir))
-app.get('*', (_req, res) => {
+app.use((_req, res) => {
   res.sendFile(path.join(distDir, 'index.html'))
 })
 
