@@ -35,8 +35,6 @@ services:
       - tri_bootstrap:/tri/bootstrap
       - tri_cache:/tri/cache
       - tri_state:/tri/state
-      - ./tri-bin:/tri/bin
-      - ./tri-lib:/tri/lib
 
   tridock-web-wallet:
     build: ../tri-wallet-web
