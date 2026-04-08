@@ -1,5 +1,5 @@
 import React, { Component, useEffect, useState } from 'react'
-import triLogo from './assets/triangles.png'
+import triLogo from './assets/header_logo.png'
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -92,7 +92,7 @@ function AppInner() {
     <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #121318 0%, #0d0e12 100%)', color: '#edf2f7', padding: 20, fontFamily: 'Segoe UI, sans-serif' }}>
       <div style={{ maxWidth: 1180, margin: '0 auto', border: '1px solid #404652', borderRadius: 14, overflow: 'hidden', background: '#16191f', boxShadow: '0 20px 60px rgba(0,0,0,.45)' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #343942', background: 'linear-gradient(180deg, #2a2e36, #20242b)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}><img src={triLogo} alt="TRI emblem" style={{ width: 42, height: 42, borderRadius: 8, boxShadow: '0 8px 18px rgba(0,0,0,.35)' }} /><div style={{ fontSize: 22, fontWeight: 700 }}>TRIdock Web Wallet</div></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}><img src={triLogo} alt="Triangles logo" style={{ height: 42, width: 'auto', display: 'block', filter: 'drop-shadow(0 8px 18px rgba(0,0,0,.35))' }} /><div style={{ fontSize: 22, fontWeight: 700 }}>TRIdock Web Wallet</div></div>
           <div style={{ color: '#aeb7c4', marginTop: 4 }}>Read-only wallet view with live node status</div>
         </div>
 
