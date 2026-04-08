@@ -224,10 +224,11 @@ copy_extracted_libs() {
 
 install_from_archive() {
   local archive="$1"
-  local tmpdir extract_root data_tar
+  local tmpdir extract_root data_tar old_return_trap
   tmpdir=$(mktemp -d "$CACHE_DIR/tri-extract.XXXXXX")
   extract_root="$tmpdir/root"
   mkdir -p "$extract_root"
+  old_return_trap=$(trap -p RETURN || true)
   trap 'rm -rf "$tmpdir"' RETURN
 
   case "$archive" in
@@ -265,6 +266,13 @@ install_from_archive() {
   chmod +x "$TRI_BIN"
   copy_extracted_libs "$extract_root"
   log "Installed trianglesd from release archive for TRI $TRI_VERSION"
+
+  rm -rf "$tmpdir"
+  if [ -n "$old_return_trap" ]; then
+    eval "$old_return_trap"
+  else
+    trap - RETURN
+  fi
 }
 
 ensure_binary_present() {
