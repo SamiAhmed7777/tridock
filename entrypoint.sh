@@ -37,8 +37,8 @@ BOOTSTRAP_FILE="$BOOTSTRAP_DIR/bootstrap.tar.gz"
 TOR_LOG="/tmp/tor.log"
 
 DEFAULT_BOOTSTRAP_SOURCES=(
-  "http://100.104.4.5:8081/bootstrap-new.tar.gz"
-  "http://bootstrap.cryptographic-triangles.org:8080/triangles-bootstrap.tar.gz"
+  "http://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
+  "http://bootstrap.cryptographic-triangles.org:8080/tri-bootstrap.tar.gz"
 )
 
 TRI_PID=""

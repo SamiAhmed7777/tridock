@@ -9,6 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     dnsutils \
     jq \
+    libboost-filesystem1.74.0 \
+    libboost-program-options1.74.0 \
+    libboost-system1.74.0 \
+    libboost-thread1.74.0 \
+    libdb5.3 \
+    libevent-2.1-7 \
+    libminiupnpc17 \
     libssl3 \
     netcat-openbsd \
     openssl \
@@ -17,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tor \
     wget \
     xz-utils \
+    zlib1g \
     binutils \
     dpkg \
  && rm -rf /var/lib/apt/lists/*
