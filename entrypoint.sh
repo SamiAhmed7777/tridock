@@ -268,7 +268,7 @@ ensure_binary_present() {
     if wget --tries=1 --timeout="$BOOTSTRAP_TIMEOUT" -O "$tmpfile" "$url"; then
       if verify_sha256 "$tmpfile" "$TRI_BIN_SHA256"; then
         case "$tmpfile" in
-          *.tar.gz|*.tgz|*.tar.xz|*.zip)
+          *.tar.gz|*.tgz|*.tar.xz|*.zip|*.deb)
             install_from_archive "$tmpfile"
             ;;
           *)

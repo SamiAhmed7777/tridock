@@ -2,14 +2,15 @@ services:
   tridock:
     build: .
     image: samiahmed7777/tridock:latest
-    container_name: tridock
+    container_name: tridock-dev
     restart: unless-stopped
     ports:
-      - "24112:24112/tcp"
-      - "24112:24112/udp"
+      - "24116:24112/tcp"
+      - "24116:24112/udp"
+      - "19116:19112/tcp"
     environment:
       TRI_MODE: full
-      TRI_NODE_NAME: tridock
+      TRI_NODE_NAME: tridock-dev
       TRI_VERSION: "5.7.5"
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
@@ -26,6 +27,7 @@ services:
       TRI_RPCUSER: tri
       TRI_RPCPASSWORD: change-me
       TRI_RPCPORT: "19112"
+      TRI_PORT: "24112"
       TRI_MAX_CONNECTIONS: "64"
       TRI_DBCACHE: "512"
     volumes:
