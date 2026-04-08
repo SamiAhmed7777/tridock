@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Component, useEffect, useMemo, useState } from 'react'
 
 const navItems = ['Overview', 'Send', 'Receive', 'Transactions', 'Address Book', 'Debug Window']
 
@@ -294,9 +294,62 @@ function TabBody({ active, summary, error }) {
   return component
 }
 
-export default function App() {
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, message: '' }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, message: error?.message || String(error) }
+  }
+
+  componentDidCatch(error) {
+    console.error('TRIdock Web Wallet render error:', error)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="app-shell">
+          <div className="window-frame">
+            <div className="titlebar">
+              <div className="titlebar-left">
+                <span className="traffic red" />
+                <span className="traffic amber" />
+                <span className="traffic green" />
+                <span className="app-title">TRIdock Web Wallet — Render Error</span>
+              </div>
+              <div className="titlebar-right">Frontend crashed</div>
+            </div>
+            <div style={{ padding: '24px', color: '#f3d7d9' }}>
+              <h2>Frontend render error</h2>
+              <pre>{this.state.message}</pre>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
+
+function AppInner() {
   const [active, setActive] = useState('Overview')
-  const [summary, setSummary] = useState(null)
+  const [summary, setSummary] = useState({
+    network: 'mainnet',
+    balance: 0,
+    stake: 0,
+    newmint: 0,
+    blocks: 0,
+    bestblock: '—',
+    connections: 0,
+    staking: { enabled: false, staking: false, expectedtime: null },
+    canonical: { enabled: false, matched: false },
+    transactions: [],
+    received: [],
+  })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
@@ -357,5 +410,13 @@ export default function App() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
   )
 }
