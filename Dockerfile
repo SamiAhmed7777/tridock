@@ -36,13 +36,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN mkdir -p /tri/bin /tri/lib /tri/data /tri/bootstrap /var/lib/tor /var/log/tri /tri/cache
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY healthcheck.sh /healthcheck.sh
+RUN chmod +x /entrypoint.sh /healthcheck.sh
 
-VOLUME ["/tri/data", "/tri/bootstrap", "/tri/bin", "/tri/lib", "/tri/cache"]
+VOLUME ["/tri/data", "/tri/bootstrap", "/tri/bin", "/tri/lib", "/tri/cache", "/tri/state"]
 
 EXPOSE 24112/tcp 24112/udp
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD pgrep -x trianglesd >/dev/null || exit 1
+  CMD /healthcheck.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

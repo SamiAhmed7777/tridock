@@ -35,6 +35,13 @@ EXTRA_ARGS="${TRI_EXTRA_ARGS:-}"
 CONF_FILE="$DATA_DIR/triangles.conf"
 BOOTSTRAP_FILE="$BOOTSTRAP_DIR/bootstrap.tar.gz"
 TOR_LOG="/tmp/tor.log"
+STATE_DIR="${TRI_STATE_DIR:-/tri/state}"
+STATUS_FILE="$STATE_DIR/status"
+STATUS_REASON_FILE="$STATE_DIR/reason"
+BOOTSTRAP_PROGRESS_FILE="$STATE_DIR/bootstrap-progress"
+BOOTSTRAP_SOURCE_FILE="$STATE_DIR/bootstrap-source"
+TRI_READY_FILE="$STATE_DIR/node-ready"
+BOOTSTRAP_ACTIVE=0
 
 DEFAULT_BOOTSTRAP_SOURCES=(
   "http://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
@@ -45,10 +52,51 @@ TRI_PID=""
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$NODE_NAME] $*"; }
 warn() { log "WARN: $*"; }
-fail() { log "ERROR: $*"; exit 1; }
+fail() { set_status "error" "$*"; log "ERROR: $*"; exit 1; }
+
+init_state_dir() {
+  mkdir -p "$STATE_DIR"
+  : > "$STATUS_FILE"
+  : > "$STATUS_REASON_FILE"
+  rm -f "$BOOTSTRAP_PROGRESS_FILE" "$BOOTSTRAP_SOURCE_FILE" "$TRI_READY_FILE"
+}
+
+set_status() {
+  local state="$1"
+  local reason="${2:-}"
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$state" > "$STATUS_FILE"
+  printf '%s\n' "$reason" > "$STATUS_REASON_FILE"
+}
+
+set_bootstrap_source() {
+  local source="${1:-}"
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$source" > "$BOOTSTRAP_SOURCE_FILE"
+}
+
+clear_bootstrap_progress() {
+  rm -f "$BOOTSTRAP_PROGRESS_FILE"
+}
+
+write_bootstrap_progress() {
+  local value="${1:-unknown}"
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$value" > "$BOOTSTRAP_PROGRESS_FILE"
+}
+
+mark_ready() {
+  mkdir -p "$STATE_DIR"
+  touch "$TRI_READY_FILE"
+}
+
+clear_ready() {
+  rm -f "$TRI_READY_FILE"
+}
 
 cleanup() {
   if [ -n "$TRI_PID" ] && kill -0 "$TRI_PID" >/dev/null 2>&1; then
+    set_status "stopping" "Stopping trianglesd"
     log "Stopping trianglesd..."
     kill -TERM "$TRI_PID" >/dev/null 2>&1 || true
     wait "$TRI_PID" || true
@@ -171,7 +219,7 @@ require_binary() {
 }
 
 write_config() {
-  mkdir -p "$DATA_DIR" "$BOOTSTRAP_DIR" /var/lib/tor /var/log/tri "$CACHE_DIR"
+  mkdir -p "$DATA_DIR" "$BOOTSTRAP_DIR" /var/lib/tor /var/log/tri "$CACHE_DIR" "$STATE_DIR"
   cat > "$CONF_FILE" <<CFG
 rpcuser=$RPC_USER
 rpcpassword=$RPC_PASSWORD
@@ -264,19 +312,37 @@ bootstrap_chain() {
   split_sources
   mkdir -p "$BOOTSTRAP_DIR"
   log "Bootstrapping chain data..."
+  set_status "bootstrapping" "Preparing bootstrap"
+  BOOTSTRAP_ACTIVE=1
+  clear_ready
+  clear_bootstrap_progress
   reset_chain_dirs
 
   local source
   for source in "${BOOTSTRAP_SOURCES[@]}"; do
     [ -n "$source" ] || continue
     log "Trying bootstrap source: $source"
+    set_bootstrap_source "$source"
+    write_bootstrap_progress "starting"
     rm -f "$BOOTSTRAP_FILE"
-    if wget --tries=1 --timeout="$BOOTSTRAP_TIMEOUT" -O "$BOOTSTRAP_FILE" "$source"; then
+    if wget --progress=dot:giga --show-progress --tries=1 --timeout="$BOOTSTRAP_TIMEOUT" -O "$BOOTSTRAP_FILE" "$source" 2>&1 | while IFS= read -r line; do
+      echo "$line"
+      case "$line" in
+        *%*)
+          pct=$(printf '%s\n' "$line" | grep -Eo '[0-9]+%' | tail -n1 || true)
+          [ -n "$pct" ] && write_bootstrap_progress "$pct"
+          ;;
+      esac
+    done; then
       log "Download complete. Extracting bootstrap archive..."
+      set_status "bootstrapping" "Extracting bootstrap archive"
+      write_bootstrap_progress "extracting"
       reset_chain_dirs
       if tar xzf "$BOOTSTRAP_FILE" -C "$DATA_DIR" --strip-components=1; then
         rm -f "$BOOTSTRAP_FILE"
         if chain_looks_sane; then
+          BOOTSTRAP_ACTIVE=0
+          clear_bootstrap_progress
           log "Bootstrap extracted and passed sanity check."
           return 0
         fi
@@ -289,6 +355,8 @@ bootstrap_chain() {
     fi
   done
 
+  BOOTSTRAP_ACTIVE=0
+  clear_bootstrap_progress
   warn "All bootstrap sources failed. Falling back to peer sync."
   return 1
 }
@@ -322,13 +390,27 @@ build_args() {
 
 run_node() {
   build_args
+  set_status "starting" "Launching trianglesd"
   log "Starting Triangles node in $MODE mode..."
   "$TRI_BIN" "${TRI_ARGS[@]}" &
   TRI_PID=$!
+  sleep 3
+  if kill -0 "$TRI_PID" >/dev/null 2>&1; then
+    if [ "$BOOTSTRAP_ACTIVE" = "1" ]; then
+      set_status "bootstrapping" "Bootstrap complete, node now starting"
+    elif chain_present; then
+      set_status "running" "Node process running"
+      mark_ready
+    else
+      set_status "syncing" "Node process running without local chain snapshot"
+    fi
+  fi
   wait "$TRI_PID"
 }
 
 main() {
+  init_state_dir
+  set_status "initializing" "Preparing TRIdock environment"
   require_binary
   write_config
   start_tor
@@ -338,6 +420,8 @@ main() {
     bootstrap_chain || true
   else
     log "Existing chain data looks sane. Reusing it."
+    set_status "starting" "Reusing existing chain data"
+    mark_ready
   fi
 
   run_node

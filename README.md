@@ -19,7 +19,7 @@ TRIdock is a Docker-first Triangles node image with Tor support, auto-bootstrap,
 - Verifies extracted bootstrap data passes minimum sanity checks before trusting it
 - Can fetch the TRI daemon binary from configured URLs if it is not already mounted
 - Uses environment variables for mode, bootstrap URLs, binary sources, ports, staking, and extra args
-- Includes a container healthcheck so bad starts are visible quickly
+- Includes a bootstrap-aware container healthcheck and state files so fresh nodes can be distinguished from broken ones
 
 ## Quick start
 
@@ -70,13 +70,22 @@ environment:
 
 ## Bootstrap behavior
 
-By default TRIdock prefers this source first:
+During startup TRIdock now writes simple state markers under `/tri/state` so operators can tell whether a node is initializing, bootstrapping, syncing, running, stopping, or errored.
 
-- `http://100.104.4.5:8081/bootstrap-new.tar.gz`
+Useful files:
+- `/tri/state/status`
+- `/tri/state/reason`
+- `/tri/state/bootstrap-source`
+- `/tri/state/bootstrap-progress`
+- `/tri/state/node-ready`
 
-Fallback:
+This means a fresh node can report meaningful bootstrap progress instead of looking identical to a broken container.
 
-- `http://bootstrap.cryptographic-triangles.org:8080/triangles-bootstrap.tar.gz`
+By default TRIdock uses the bootstrap server URL wallets should rely on:
+
+- `http://bootstrap.cryptographic-triangles.org:8080/tri-bootstrap.tar.gz`
+
+When you publish a replacement snapshot over time, update the file served at that URL on the bootstrap server.
 
 Override with:
 
