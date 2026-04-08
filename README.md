@@ -88,7 +88,7 @@ This means a fresh node can report meaningful bootstrap progress instead of look
 
 By default TRIdock uses the bootstrap server URL wallets should rely on:
 
-- `http://bootstrap.cryptographic-triangles.org:8080/tri-bootstrap.tar.gz`
+- `https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz`
 
 When you publish a replacement snapshot over time, update the file served at that URL on the bootstrap server.
 

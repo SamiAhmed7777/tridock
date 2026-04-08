@@ -11,7 +11,7 @@ services:
       TRI_NODE_NAME: tridock-seed
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
-      TRI_BOOTSTRAP_URLS: "http://100.104.4.5:8081/bootstrap-new.tar.gz,http://bootstrap.cryptographic-triangles.org:8080/triangles-bootstrap.tar.gz"
+      TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
       TRI_MAX_CONNECTIONS: "128"
       TRI_RPCUSER: tri
       TRI_RPCPASSWORD: change-me

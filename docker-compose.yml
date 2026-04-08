@@ -18,7 +18,7 @@ services:
       TRI_BOOTSTRAP_TIMEOUT: "30"
       TRI_BOOTSTRAP_MIN_BLOCK_BYTES: "100000000"
       TRI_BOOTSTRAP_MIN_LDB_COUNT: "300"
-      TRI_BOOTSTRAP_URLS: "http://bootstrap.cryptographic-triangles.org:8080/tri-bootstrap.tar.gz"
+      TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
       TRI_RELEASE_BASE_URL: "https://github.com/SamiAhmed7777/triangles_v5/releases/download"
       TRI_RELEASE_FILENAME: "cryptographic-triangles-daemon_5.7.5_amd64.deb"
       TRI_BIN_DOWNLOAD_URL: ""
