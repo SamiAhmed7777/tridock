@@ -1,4 +1,4 @@
-import { Component, useEffect, useState } from 'react'
+import React, { Component, useEffect, useState } from 'react'
 
 class ErrorBoundary extends Component {
   constructor(props) {
