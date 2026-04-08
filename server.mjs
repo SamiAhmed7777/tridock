@@ -1,7 +1,12 @@
 import express from 'express'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const app = express()
 const PORT = process.env.PORT || 4177
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const distDir = path.join(__dirname, 'dist')
 
 const rpcUrl = process.env.TRI_RPC_URL || 'http://127.0.0.1:19119'
 const rpcUser = process.env.TRI_RPC_USER || ''
@@ -121,6 +126,11 @@ app.post('/api/rpc', express.json(), async (req, res) => {
   }
 })
 
+app.use(express.static(distDir))
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(distDir, 'index.html'))
+})
+
 app.listen(PORT, () => {
-  console.log(`TRIdock Web Wallet API listening on :${PORT}`)
+  console.log(`TRIdock Web Wallet listening on :${PORT}`)
 })
