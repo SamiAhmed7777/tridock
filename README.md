@@ -25,7 +25,7 @@ TRIdock is a Docker-first Triangles node image with Tor support, auto-bootstrap,
 
 ### 1. Put the binary and libs beside the compose file
 
-By default TRIdock is now designed to fetch the real TRI v5.7.5 daemon package from GitHub Releases (`cryptographic-triangles-daemon_5.7.5_amd64.deb`). You can still provide your own files if needed:
+By default TRIdock is now designed to fetch the latest TRI daemon package from GitHub Releases automatically. You can still pin a version or provide your own files if needed:
 
 - optional: `./tri-bin/trianglesd`
 - optional: `./tri-lib/` containing required TRI shared libraries
@@ -121,7 +121,7 @@ When enabled, TRIdock records the canonical and local height/hash in `/tri/state
 | `TRI_BOOTSTRAP_ENABLED` | `1` | Download bootstrap if needed |
 | `TRI_BOOTSTRAP_URLS` | built-in list | Comma-separated bootstrap URLs |
 | `TRI_RELEASE_BASE_URL` | SamiAhmed7777/triangles_v5 releases | Base URL for TRI release artifacts |
-| `TRI_RELEASE_FILENAME` | `cryptographic-triangles-daemon_5.7.5_amd64.deb` | Release asset filename to fetch |
+| `TRI_RELEASE_FILENAME` | auto | Release asset filename to fetch (auto-derived from version/latest release unless overridden) |
 | `TRI_BIN_DOWNLOAD_URL` | derived from release vars | Primary binary or release artifact URL |
 | `TRI_BIN_FALLBACK_URLS` | empty | Comma-separated fallback binary/artifact URLs |
 | `TRI_BIN_SHA256` | empty | Optional SHA256 verification for the fetched artifact |

@@ -11,7 +11,7 @@ services:
     environment:
       TRI_MODE: full
       TRI_NODE_NAME: tridock-dev
-      TRI_VERSION: "5.7.5"
+      TRI_VERSION: "latest"
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
       TRI_PREFER_BOOTSTRAP: "1"
@@ -20,10 +20,10 @@ services:
       TRI_BOOTSTRAP_MIN_LDB_COUNT: "300"
       TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
       TRI_RELEASE_BASE_URL: "https://github.com/SamiAhmed7777/triangles_v5/releases/download"
-      TRI_RELEASE_FILENAME: "cryptographic-triangles-daemon_5.7.5_amd64.deb"
+      TRI_RELEASE_FILENAME: ""
       TRI_BIN_DOWNLOAD_URL: ""
       TRI_BIN_FALLBACK_URLS: ""
-      TRI_BIN_SHA256: "696f1ae93ef9306eb0227e04f6704d17e610207552eb6ce8c7fa091f196f7500"
+      TRI_BIN_SHA256: ""
       TRI_RPCUSER: tri
       TRI_RPCPASSWORD: change-me
       TRI_RPCPORT: "19112"
