@@ -2,6 +2,42 @@ import express from 'express'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import fs from 'node:fs/promises'
+
+async function readStateFile(name) {
+  const base = process.env.TRI_STATE_DIR || '/tri/state'
+  try {
+    return (await fs.readFile(path.join(base, name), 'utf8')).trim()
+  } catch {
+    return ''
+  }
+}
+
+async function readNodeState() {
+  const [status, reason, bootstrapSource, bootstrapProgress, canonicalStatus, localHeight, localBestblock, canonicalHeight, canonicalBestblock] = await Promise.all([
+    readStateFile('status'),
+    readStateFile('reason'),
+    readStateFile('bootstrap-source'),
+    readStateFile('bootstrap-progress'),
+    readStateFile('canonical-status'),
+    readStateFile('local-height'),
+    readStateFile('local-bestblock'),
+    readStateFile('canonical-height'),
+    readStateFile('canonical-bestblock'),
+  ])
+  return {
+    status: status || 'unknown',
+    reason: reason || '',
+    bootstrapSource: bootstrapSource || '',
+    bootstrapProgress: bootstrapProgress || '',
+    canonicalStatus: canonicalStatus || '',
+    localHeight: localHeight || '',
+    localBestblock: localBestblock || '',
+    canonicalHeight: canonicalHeight || '',
+    canonicalBestblock: canonicalBestblock || '',
+  }
+}
+
 const app = express()
 const PORT = process.env.PORT || 4177
 const __filename = fileURLToPath(import.meta.url)
@@ -54,11 +90,18 @@ function pickBalance(info, staking) {
   return { balance, stakeWeight: stake }
 }
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, rpcUrl, canonicalEnabled: Boolean(canonicalUrl) })
+app.get('/api/health', async (_req, res) => {
+  const nodeState = await readNodeState()
+  res.json({ ok: true, rpcUrl, canonicalEnabled: Boolean(canonicalUrl), nodeState })
+})
+
+app.get('/api/node/state', async (_req, res) => {
+  res.json(await readNodeState())
 })
 
 app.get('/api/wallet/summary', async (_req, res) => {
+  const nodeState = await readNodeState()
+
   try {
     const [info, staking, txs, received, blockCount, bestBlock, connections] = await Promise.all([
       rpcCall(rpcUrl, rpcUser, rpcPassword, 'getinfo'),
@@ -86,6 +129,10 @@ app.get('/api/wallet/summary', async (_req, res) => {
 
     const balances = pickBalance(info, staking)
     res.json({
+      ok: true,
+      rpcReady: true,
+      rpcError: '',
+      nodeState,
       network: info?.testnet ? 'testnet' : 'mainnet',
       version: info?.version ?? null,
       protocolversion: info?.protocolversion ?? null,
@@ -109,7 +156,33 @@ app.get('/api/wallet/summary', async (_req, res) => {
       received: Array.isArray(received) ? received : [],
     })
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    res.json({
+      ok: false,
+      rpcReady: false,
+      rpcError: error.message,
+      nodeState,
+      network: null,
+      version: null,
+      protocolversion: null,
+      walletversion: null,
+      balance: null,
+      stake: null,
+      newmint: null,
+      blocks: null,
+      bestblock: null,
+      connections: null,
+      staking: {
+        enabled: false,
+        staking: false,
+        errors: '',
+        weight: null,
+        netstakeweight: null,
+        expectedtime: null,
+      },
+      canonical: { enabled: Boolean(canonicalUrl) },
+      transactions: [],
+      received: [],
+    })
   }
 })
 
