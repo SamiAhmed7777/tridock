@@ -18,8 +18,6 @@ services:
     volumes:
       - tri_seed_data:/tri/data
       - tri_seed_bootstrap:/tri/bootstrap
-      - ./tri-bin:/tri/bin:ro
-      - ./tri-lib:/tri/lib:ro
 
 volumes:
   tri_seed_data:

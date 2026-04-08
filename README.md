@@ -7,7 +7,7 @@ TRIdock is a Docker-first Triangles node image with Tor support, auto-bootstrap,
 - Run a full TRI node in Docker with minimal setup
 - Prefer Sami's bootstrap source so fresh nodes land on the intended chain quickly
 - Support full node, seed node, and staking-oriented setups from the same image
-- Keep runtime data in volumes and binaries/libs mounted cleanly
+- Keep runtime data in volumes and fetch TRI releases automatically by default
 - Make recovery and redeploy simple
 
 ## What it does
@@ -17,15 +17,25 @@ TRIdock is a Docker-first Triangles node image with Tor support, auto-bootstrap,
 - Checks for existing chain data before startup
 - If chain data is missing or obviously bad, downloads bootstrap data automatically
 - Verifies extracted bootstrap data passes minimum sanity checks before trusting it
-- Can fetch the TRI daemon binary from configured URLs if it is not already mounted
+- Fetches the TRI daemon package from GitHub Releases by default
+- Still supports local binary/lib overrides when you explicitly want them
 - Uses environment variables for mode, bootstrap URLs, binary sources, ports, staking, and extra args
 - Includes a bootstrap-aware container healthcheck and state files so fresh nodes can be distinguished from broken ones
 
 ## Quick start
 
-### 1. Put the binary and libs beside the compose file
+### 1. Start with the default release-driven path
 
-By default TRIdock is now designed to fetch the latest TRI daemon package from GitHub Releases automatically. You can still pin a version or provide your own files if needed:
+By default TRIdock fetches the latest TRI daemon package from GitHub Releases automatically. You do not need to provide `trianglesd` or shared libraries for the normal path.
+
+If you want to pin a specific upstream release, set for example:
+
+```yaml
+environment:
+  TRI_VERSION: "5.7.6"
+```
+
+If you want to override the auto-download path entirely, you can still mount your own files explicitly:
 
 - optional: `./tri-bin/trianglesd`
 - optional: `./tri-lib/` containing required TRI shared libraries
@@ -147,8 +157,13 @@ When enabled, TRIdock records the canonical and local height/hash in `/tri/state
 
 - `/tri/data` — blockchain + wallet data
 - `/tri/bootstrap` — temporary bootstrap archive staging
-- `/tri/bin` — mounted `trianglesd` binary
-- `/tri/lib` — mounted required TRI libs
+- `/tri/cache` — cached TRI release artifacts
+- `/tri/state` — runtime state and readiness markers
+
+Optional override mounts:
+
+- `/tri/bin` — custom mounted `trianglesd` binary
+- `/tri/lib` — custom mounted TRI shared libraries
 
 ## Backups
 
@@ -186,9 +201,9 @@ Rules for the project:
 - Publish image tags for specific TRI versions, for example:
   - `samiahmed7777/tridock:5.7.5`
   - `samiahmed7777/tridock:latest`
-- Document where the bundled or mounted TRI binary/libs came from for each release.
+- Document where the downloaded or explicitly mounted TRI binary/libs came from for each release.
 - Add automation later so new TRI releases trigger a TRIdock rebuild/review flow.
 
 ## Notes
 
-TRIdock now prefers the real versioned TRI GitHub release package by default and runs on a Debian-compatible base so the packaged TRI daemon matches normal Linux machines more closely. It can install `trianglesd` from an archive or `.deb` when the binary is not already present. Local mounts are still supported as overrides or fallbacks.
+TRIdock now prefers the real versioned TRI GitHub release package by default and runs on a Debian-compatible base so the packaged TRI daemon matches normal Linux machines more closely. It can install `trianglesd` from an archive or `.deb` automatically. Local mounts are still supported, but they are now an explicit override path rather than the default recommendation.
