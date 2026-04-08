@@ -211,6 +211,10 @@ verify_sha256() {
 }
 
 find_extracted_binary() {
+  find "$1" -type f -path '*/usr/lib/cryptographic-triangles/trianglesd' | head -n 1
+}
+
+find_wrapper_binary() {
   find "$1" -type f -name trianglesd | head -n 1
 }
 
@@ -220,6 +224,15 @@ copy_extracted_libs() {
   find "$src_root" -type f \( -name '*.so' -o -name '*.so.*' \) -print0 | while IFS= read -r -d '' lib; do
     cp -f "$lib" "$LIB_DIR/"
   done
+}
+
+install_extracted_runtime_tree() {
+  local src_root="$1"
+  local runtime_root="$src_root/usr/lib/cryptographic-triangles"
+  if [ -d "$runtime_root" ]; then
+    mkdir -p "$BIN_DIR/runtime"
+    cp -a "$runtime_root/." "$BIN_DIR/runtime/"
+  fi
 }
 
 install_from_archive() {
@@ -257,14 +270,34 @@ install_from_archive() {
       ;;
   esac
 
-  local extracted_bin
+  local extracted_bin wrapper_bin
   extracted_bin=$(find_extracted_binary "$extract_root")
-  [ -n "$extracted_bin" ] || fail "No trianglesd binary found in extracted archive"
+  wrapper_bin=$(find_wrapper_binary "$extract_root")
 
   mkdir -p "$BIN_DIR" "$LIB_DIR"
-  cp -f "$extracted_bin" "$TRI_BIN"
-  chmod +x "$TRI_BIN"
+  install_extracted_runtime_tree "$extract_root"
   copy_extracted_libs "$extract_root"
+
+  if [ -n "$extracted_bin" ]; then
+    cp -f "$extracted_bin" "$TRI_BIN"
+  elif [ -n "$wrapper_bin" ]; then
+    cp -f "$wrapper_bin" "$TRI_BIN"
+  else
+    fail "No trianglesd binary found in extracted archive"
+  fi
+
+  chmod +x "$TRI_BIN"
+
+  if grep -q '/usr/lib/cryptographic-triangles/trianglesd' "$TRI_BIN" 2>/dev/null && [ -x "$BIN_DIR/runtime/trianglesd" ]; then
+    cat > "$TRI_BIN" <<EOF
+#!/bin/bash
+INSTALL_DIR="$BIN_DIR/runtime"
+export LD_LIBRARY_PATH="$BIN_DIR/runtime/lib:$LIB_DIR:${LD_LIBRARY_PATH:-}"
+exec "$BIN_DIR/runtime/trianglesd" "$@"
+EOF
+    chmod +x "$TRI_BIN"
+  fi
+
   log "Installed trianglesd from release archive for TRI $TRI_VERSION"
 
   rm -rf "$tmpdir"
