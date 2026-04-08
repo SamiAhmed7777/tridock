@@ -224,26 +224,46 @@ copy_extracted_libs() {
 
 install_from_archive() {
   local archive="$1"
-  local tmpdir
+  local tmpdir extract_root data_tar
   tmpdir=$(mktemp -d "$CACHE_DIR/tri-extract.XXXXXX")
+  extract_root="$tmpdir/root"
+  mkdir -p "$extract_root"
   trap 'rm -rf "$tmpdir"' RETURN
 
   case "$archive" in
-    *.tar.gz|*.tgz) tar xzf "$archive" -C "$tmpdir" ;;
-    *.tar.xz) tar xJf "$archive" -C "$tmpdir" ;;
-    *.deb) bsdtar -xf "$archive" -C "$tmpdir" ;;
-    *.zip) fail "zip TRI release archives are not supported yet" ;;
-    *) fail "Unknown TRI release archive format: $archive" ;;
+    *.tar.gz|*.tgz)
+      tar xzf "$archive" -C "$extract_root"
+      ;;
+    *.tar.xz)
+      tar xJf "$archive" -C "$extract_root"
+      ;;
+    *.deb)
+      bsdtar -xf "$archive" -C "$tmpdir"
+      data_tar=$(find "$tmpdir" -maxdepth 1 -type f \( -name 'data.tar.*' -o -name 'data.tar' \) | head -n 1)
+      [ -n "$data_tar" ] || fail "No data.tar payload found in deb archive"
+      case "$data_tar" in
+        *.xz) tar -xJf "$data_tar" -C "$extract_root" ;;
+        *.gz) tar -xzf "$data_tar" -C "$extract_root" ;;
+        *.zst) tar --zstd -xf "$data_tar" -C "$extract_root" ;;
+        *) tar -xf "$data_tar" -C "$extract_root" ;;
+      esac
+      ;;
+    *.zip)
+      fail "zip TRI release archives are not supported yet"
+      ;;
+    *)
+      fail "Unknown TRI release archive format: $archive"
+      ;;
   esac
 
   local extracted_bin
-  extracted_bin=$(find_extracted_binary "$tmpdir")
+  extracted_bin=$(find_extracted_binary "$extract_root")
   [ -n "$extracted_bin" ] || fail "No trianglesd binary found in extracted archive"
 
   mkdir -p "$BIN_DIR" "$LIB_DIR"
   cp -f "$extracted_bin" "$TRI_BIN"
   chmod +x "$TRI_BIN"
-  copy_extracted_libs "$tmpdir"
+  copy_extracted_libs "$extract_root"
   log "Installed trianglesd from release archive for TRI $TRI_VERSION"
 }
 
