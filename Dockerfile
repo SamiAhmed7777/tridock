@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tor \
     wget \
     xz-utils \
+    zstd \
     zlib1g \
     binutils \
     dpkg \
