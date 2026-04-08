@@ -53,6 +53,7 @@ LOCAL_HEIGHT_FILE="$STATE_DIR/local-height"
 LOCAL_HASH_FILE="$STATE_DIR/local-bestblock"
 TRI_READY_FILE="$STATE_DIR/node-ready"
 BOOTSTRAP_ACTIVE=0
+RECOVERY_PERFORMED=0
 
 DEFAULT_BOOTSTRAP_SOURCES=(
   "http://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
@@ -222,6 +223,41 @@ cleanup() {
   fi
 }
 trap cleanup EXIT INT TERM
+
+quarantine_runtime_files() {
+  local ts backup_dir
+  ts="$(date +%Y%m%d-%H%M%S)"
+  backup_dir="$DATA_DIR/recovery-$ts"
+  mkdir -p "$backup_dir"
+
+  for path in \
+    "$DATA_DIR/peers.dat" \
+    "$DATA_DIR/addr.dat" \
+    "$DATA_DIR/db.log" \
+    "$DATA_DIR/.lock" \
+    "$DATA_DIR/__db.001" \
+    "$DATA_DIR/__db.002" \
+    "$DATA_DIR/__db.003"; do
+    [ -e "$path" ] || continue
+    mv "$path" "$backup_dir/$(basename "$path")" 2>/dev/null || rm -f "$path" 2>/dev/null || true
+  done
+
+  if [ -d "$DATA_DIR/database" ]; then
+    mv "$DATA_DIR/database" "$backup_dir/database" 2>/dev/null || rm -rf "$DATA_DIR/database" 2>/dev/null || true
+  fi
+
+  log "Quarantined runtime metadata to $backup_dir"
+}
+
+attempt_runtime_recovery() {
+  [ "$RECOVERY_PERFORMED" = "0" ] || return 1
+  RECOVERY_PERFORMED=1
+  warn "Attempting one-time runtime recovery after TRI startup failure"
+  clear_ready
+  set_status "recovering" "Quarantining peer/BDB runtime state after startup failure"
+  quarantine_runtime_files
+  return 0
+}
 
 split_sources() {
   local raw="${TRI_BOOTSTRAP_URLS:-}"
@@ -582,28 +618,49 @@ build_args() {
 }
 
 run_node() {
-  build_args
-  set_status "starting" "Launching trianglesd"
-  log "Starting Triangles node in $MODE mode..."
-  "$TRI_BIN" "${TRI_ARGS[@]}" &
-  TRI_PID=$!
-  sleep 3
-  if kill -0 "$TRI_PID" >/dev/null 2>&1; then
-    if [ "$BOOTSTRAP_ACTIVE" = "1" ]; then
-      set_status "bootstrapping" "Bootstrap complete, node now starting"
-    elif chain_present; then
-      set_status "running" "Node process running"
-      mark_ready
-    else
-      set_status "syncing" "Node process running without local chain snapshot"
+  local exit_code=0
+
+  while true; do
+    build_args
+    set_status "starting" "Launching trianglesd"
+    log "Starting Triangles node in $MODE mode..."
+    "$TRI_BIN" "${TRI_ARGS[@]}" &
+    TRI_PID=$!
+    sleep 3
+    if kill -0 "$TRI_PID" >/dev/null 2>&1; then
+      if [ "$BOOTSTRAP_ACTIVE" = "1" ]; then
+        set_status "bootstrapping" "Bootstrap complete, node now starting"
+      elif chain_present; then
+        set_status "running" "Node process running"
+        mark_ready
+      else
+        set_status "syncing" "Node process running without local chain snapshot"
+      fi
     fi
-  fi
 
-  if [ -n "$CANONICAL_RPC_URL" ]; then
-    verify_canonical_alignment || true
-  fi
+    if [ -n "$CANONICAL_RPC_URL" ]; then
+      verify_canonical_alignment || true
+    fi
 
-  wait "$TRI_PID"
+    exit_code=0
+    wait "$TRI_PID" || exit_code=$?
+    TRI_PID=""
+
+    case "$exit_code" in
+      0|143)
+        return 0
+        ;;
+    esac
+
+    warn "trianglesd exited unexpectedly with code $exit_code"
+    if attempt_runtime_recovery; then
+      warn "Retrying trianglesd once after runtime recovery"
+      continue
+    fi
+
+    set_status "error" "trianglesd exited unexpectedly with code $exit_code"
+    return "$exit_code"
+  done
 }
 
 main() {
