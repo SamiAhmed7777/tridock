@@ -34,6 +34,7 @@ services:
       - tri_data:/tri/data
       - tri_bootstrap:/tri/bootstrap
       - tri_cache:/tri/cache
+      - tri_state:/tri/state
       - ./tri-bin:/tri/bin
       - ./tri-lib:/tri/lib
 
@@ -52,9 +53,9 @@ services:
       TRI_CANONICAL_RPC_URL: ""
       TRI_CANONICAL_RPC_USER: tri
       TRI_CANONICAL_RPC_PASSWORD: change-me
-      TRI_STATE_DIR: "/tri/data/state"
+      TRI_STATE_DIR: "/tri/state"
     volumes:
-      - tri_data:/tri/data:ro
+      - tri_state:/tri/state:ro
     depends_on:
       - tridock
 
@@ -62,3 +63,4 @@ volumes:
   tri_data:
   tri_bootstrap:
   tri_cache:
+  tri_state:
