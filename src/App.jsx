@@ -1,5 +1,5 @@
 import React, { Component, useEffect, useState } from 'react'
-import triLogo from './assets/header_logo.png'
+import triLogo from './assets/triangles-wordmark.png'
 
 class ErrorBoundary extends Component {
   constructor(props) {
