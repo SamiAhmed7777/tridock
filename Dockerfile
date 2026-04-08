@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssl \
     procps \
     tar \
+    libarchive-tools \
     tor \
     wget \
     xz-utils \
