@@ -32,6 +32,12 @@ RPC_PORT="${TRI_RPCPORT:-19112}"
 ADDNODE="${TRI_ADDNODE:-}"
 EXTERNAL_IP="${TRI_EXTERNAL_IP:-}"
 EXTRA_ARGS="${TRI_EXTRA_ARGS:-}"
+CANONICAL_RPC_URL="${TRI_CANONICAL_RPC_URL:-}"
+CANONICAL_RPC_USER="${TRI_CANONICAL_RPC_USER:-}"
+CANONICAL_RPC_PASSWORD="${TRI_CANONICAL_RPC_PASSWORD:-}"
+CANONICAL_VERIFY_ATTEMPTS="${TRI_CANONICAL_VERIFY_ATTEMPTS:-20}"
+CANONICAL_VERIFY_INTERVAL="${TRI_CANONICAL_VERIFY_INTERVAL:-30}"
+CANONICAL_REQUIRED_MATCHES="${TRI_CANONICAL_REQUIRED_MATCHES:-2}"
 CONF_FILE="$DATA_DIR/triangles.conf"
 BOOTSTRAP_FILE="$BOOTSTRAP_DIR/bootstrap.tar.gz"
 TOR_LOG="/tmp/tor.log"
@@ -40,6 +46,11 @@ STATUS_FILE="$STATE_DIR/status"
 STATUS_REASON_FILE="$STATE_DIR/reason"
 BOOTSTRAP_PROGRESS_FILE="$STATE_DIR/bootstrap-progress"
 BOOTSTRAP_SOURCE_FILE="$STATE_DIR/bootstrap-source"
+CANONICAL_STATUS_FILE="$STATE_DIR/canonical-status"
+CANONICAL_HEIGHT_FILE="$STATE_DIR/canonical-height"
+CANONICAL_HASH_FILE="$STATE_DIR/canonical-bestblock"
+LOCAL_HEIGHT_FILE="$STATE_DIR/local-height"
+LOCAL_HASH_FILE="$STATE_DIR/local-bestblock"
 TRI_READY_FILE="$STATE_DIR/node-ready"
 BOOTSTRAP_ACTIVE=0
 
@@ -58,7 +69,7 @@ init_state_dir() {
   mkdir -p "$STATE_DIR"
   : > "$STATUS_FILE"
   : > "$STATUS_REASON_FILE"
-  rm -f "$BOOTSTRAP_PROGRESS_FILE" "$BOOTSTRAP_SOURCE_FILE" "$TRI_READY_FILE"
+  rm -f "$BOOTSTRAP_PROGRESS_FILE" "$BOOTSTRAP_SOURCE_FILE" "$CANONICAL_STATUS_FILE" "$CANONICAL_HEIGHT_FILE" "$CANONICAL_HASH_FILE" "$LOCAL_HEIGHT_FILE" "$LOCAL_HASH_FILE" "$TRI_READY_FILE"
 }
 
 set_status() {
@@ -92,6 +103,72 @@ mark_ready() {
 
 clear_ready() {
   rm -f "$TRI_READY_FILE"
+}
+
+write_state_value() {
+  local file="$1"
+  local value="${2:-}"
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$value" > "$file"
+}
+
+rpc_call() {
+  local method="$1"
+  local params="${2:-[]}"
+  local auth_args=()
+  [ -n "$CANONICAL_RPC_USER" ] && auth_args+=(--user "$CANONICAL_RPC_USER")
+  [ -n "$CANONICAL_RPC_PASSWORD" ] && auth_args+=(--password "$CANONICAL_RPC_PASSWORD")
+  curl -fsS "${auth_args[@]}" -H 'content-type: application/json' \
+    --data "{\"jsonrpc\":\"1.0\",\"id\":\"tridock\",\"method\":\"$method\",\"params\":$params}" \
+    "$CANONICAL_RPC_URL"
+}
+
+json_result() {
+  jq -r '.result // empty'
+}
+
+verify_canonical_alignment() {
+  [ -n "$CANONICAL_RPC_URL" ] || return 0
+  local matches=0 attempt=0 canonical_height canonical_hash local_height local_hash
+  set_status "verifying" "Checking canonical chain alignment"
+  write_state_value "$CANONICAL_STATUS_FILE" "verifying"
+
+  while [ "$attempt" -lt "$CANONICAL_VERIFY_ATTEMPTS" ]; do
+    attempt=$((attempt + 1))
+
+    canonical_height=$(rpc_call getblockcount | json_result 2>/dev/null || true)
+    canonical_hash=$(rpc_call getbestblockhash | json_result 2>/dev/null || true)
+    local_height=$("$TRI_BIN" -datadir="$DATA_DIR" -conf="$CONF_FILE" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASSWORD" -rpcport="$RPC_PORT" getblockcount 2>/dev/null || true)
+    local_hash=$("$TRI_BIN" -datadir="$DATA_DIR" -conf="$CONF_FILE" -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASSWORD" -rpcport="$RPC_PORT" getbestblockhash 2>/dev/null || true)
+
+    [ -n "$canonical_height" ] && write_state_value "$CANONICAL_HEIGHT_FILE" "$canonical_height"
+    [ -n "$canonical_hash" ] && write_state_value "$CANONICAL_HASH_FILE" "$canonical_hash"
+    [ -n "$local_height" ] && write_state_value "$LOCAL_HEIGHT_FILE" "$local_height"
+    [ -n "$local_hash" ] && write_state_value "$LOCAL_HASH_FILE" "$local_hash"
+
+    if [ -n "$canonical_height" ] && [ -n "$canonical_hash" ] && [ -n "$local_height" ] && [ -n "$local_hash" ] \
+      && [ "$canonical_height" = "$local_height" ] && [ "$canonical_hash" = "$local_hash" ]; then
+      matches=$((matches + 1))
+      log "Canonical check matched ($matches/$CANONICAL_REQUIRED_MATCHES): height=$local_height hash=$local_hash"
+      if [ "$matches" -ge "$CANONICAL_REQUIRED_MATCHES" ]; then
+        write_state_value "$CANONICAL_STATUS_FILE" "matched"
+        set_status "running" "Canonical chain verified"
+        mark_ready
+        return 0
+      fi
+    else
+      matches=0
+      write_state_value "$CANONICAL_STATUS_FILE" "mismatch"
+      set_status "syncing" "Waiting for exact canonical height/hash match"
+      log "Canonical check mismatch: local=${local_height:-?}/${local_hash:-?} canonical=${canonical_height:-?}/${canonical_hash:-?}"
+    fi
+
+    sleep "$CANONICAL_VERIFY_INTERVAL"
+  done
+
+  write_state_value "$CANONICAL_STATUS_FILE" "timeout"
+  set_status "syncing" "Canonical verification timed out"
+  return 1
 }
 
 cleanup() {
@@ -405,6 +482,11 @@ run_node() {
       set_status "syncing" "Node process running without local chain snapshot"
     fi
   fi
+
+  if [ -n "$CANONICAL_RPC_URL" ]; then
+    verify_canonical_alignment || true
+  fi
+
   wait "$TRI_PID"
 }
 

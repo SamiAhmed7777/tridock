@@ -77,6 +77,11 @@ Useful files:
 - `/tri/state/reason`
 - `/tri/state/bootstrap-source`
 - `/tri/state/bootstrap-progress`
+- `/tri/state/canonical-status`
+- `/tri/state/canonical-height`
+- `/tri/state/canonical-bestblock`
+- `/tri/state/local-height`
+- `/tri/state/local-bestblock`
 - `/tri/state/node-ready`
 
 This means a fresh node can report meaningful bootstrap progress instead of looking identical to a broken container.
@@ -93,6 +98,19 @@ Override with:
 environment:
   TRI_BOOTSTRAP_URLS: "http://source1/file.tar.gz,http://source2/file.tar.gz"
 ```
+
+### Canonical chain verification
+
+If you want TRIdock to treat one node as canonical and wait for an exact match on both height and best block hash, set:
+
+```yaml
+environment:
+  TRI_CANONICAL_RPC_URL: "http://100.104.4.5:19112/"
+  TRI_CANONICAL_RPC_USER: "tri"
+  TRI_CANONICAL_RPC_PASSWORD: "your-rpc-password"
+```
+
+When enabled, TRIdock records the canonical and local height/hash in `/tri/state` and only marks canonical status as matched after repeated exact agreement.
 
 ## Environment variables
 
@@ -118,6 +136,12 @@ environment:
 | `TRI_ADDNODE` | empty | Comma-separated addnode list |
 | `TRI_EXTERNAL_IP` | empty | External IP hint |
 | `TRI_EXTRA_ARGS` | empty | Extra raw trianglesd args |
+| `TRI_CANONICAL_RPC_URL` | empty | Canonical node RPC URL for exact chain verification |
+| `TRI_CANONICAL_RPC_USER` | empty | Canonical RPC username |
+| `TRI_CANONICAL_RPC_PASSWORD` | empty | Canonical RPC password |
+| `TRI_CANONICAL_VERIFY_ATTEMPTS` | `20` | How many verification polls to try |
+| `TRI_CANONICAL_VERIFY_INTERVAL` | `30` | Seconds between verification polls |
+| `TRI_CANONICAL_REQUIRED_MATCHES` | `2` | Consecutive exact matches required before accepting canonical alignment |
 
 ## Volumes
 

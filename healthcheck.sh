@@ -12,7 +12,7 @@ fi
 
 if ! pgrep -x trianglesd >/dev/null 2>&1; then
   case "$status" in
-    bootstrapping|initializing|starting|syncing)
+    bootstrapping|initializing|starting|syncing|verifying)
       exit 0
       ;;
   esac
@@ -23,7 +23,7 @@ case "$status" in
   error|stopping)
     exit 1
     ;;
-  bootstrapping|initializing|starting|syncing)
+  bootstrapping|initializing|starting|syncing|verifying)
     exit 0
     ;;
   running)
