@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libboost-system1.74.0 \
     libboost-thread1.74.0 \
     libdb5.3 \
+    libdb5.3++ \
     libevent-2.1-7 \
     libminiupnpc17 \
     libssl3 \
