@@ -52,6 +52,9 @@ services:
       TRI_CANONICAL_RPC_URL: ""
       TRI_CANONICAL_RPC_USER: tri
       TRI_CANONICAL_RPC_PASSWORD: change-me
+      TRI_STATE_DIR: "/tri/data/state"
+    volumes:
+      - tri_data:/tri/data:ro
     depends_on:
       - tridock
 
