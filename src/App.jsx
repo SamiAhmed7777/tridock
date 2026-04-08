@@ -1,31 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const navItems = ['Overview', 'Send', 'Receive', 'Transactions', 'Address Book', 'Debug Window']
 
-const transactionRows = [
-  { date: '2026-04-07 23:11', type: 'Generated', address: 'TBxrQx34J2mRvkmixnrdUynwzEC3wPdgb3', amount: '+14.28 TRI', status: 'Confirmed' },
-  { date: '2026-04-07 21:44', type: 'Received with', address: 'TZ4ZrftdfK9MLCvo63uR3ZcPibFEG54WT7', amount: '+250.00 TRI', status: 'Confirmed' },
-  { date: '2026-04-07 19:03', type: 'Sent to', address: 'TAaa8oW7g2K3fMVsJPn3k7AwtkP2r9Vz19', amount: '-40.00 TRI', status: 'Confirmed' },
-  { date: '2026-04-07 17:20', type: 'Generated', address: 'TBxrQx34J2mRvkmixnrdUynwzEC3wPdgb3', amount: '+9.51 TRI', status: 'Confirmed' },
-  { date: '2026-04-07 14:58', type: 'Received with', address: 'TPocketWalletExampleAddrzzzzzzzzzz', amount: '+88.40 TRI', status: 'Confirmed' },
-]
+function formatTri(value) {
+  const num = Number(value ?? 0)
+  return `${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TRI`
+}
 
-const receiveRows = [
-  { label: 'Main staking', address: 'TBxrQx34J2mRvkmixnrdUynwzEC3wPdgb3', amount: '145.97 TRI' },
-  { label: 'Savings', address: 'TZ4ZrftdfK9MLCvo63uR3ZcPibFEG54WT7', amount: '40.72 TRI' },
-  { label: 'Cold receive', address: 'TWebWalletExampleAddress00000000001', amount: '0.00 TRI' },
-]
+function formatExpectedTime(seconds) {
+  if (!seconds || seconds <= 0) return '—'
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.floor((seconds % 3600) / 60)
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
 
-const debugRows = [
-  ['Client version', 'v5.7.5 target / daemon probe seen v5.5.6'],
-  ['Blocks', '2,200,941'],
-  ['Canonical state', 'matched'],
-  ['Connections', '8'],
-  ['Proxy', 'Tor enabled'],
-  ['Wallet mode', 'read-only mock shell'],
-]
-
-function Sidebar({ active, onSelect }) {
+function Sidebar({ active, onSelect, summary }) {
   return (
     <aside className="sidebar qt-panel">
       <div className="window-badge">TRIdock Web Wallet</div>
@@ -53,14 +43,14 @@ function Sidebar({ active, onSelect }) {
 
       <div className="sidebar-footer qt-inset">
         <div className="mini-stat"><span>Encryption</span><strong>Locked</strong></div>
-        <div className="mini-stat"><span>Canonical</span><strong>Verified</strong></div>
-        <div className="mini-stat"><span>Mode</span><strong>Wallet UI</strong></div>
+        <div className="mini-stat"><span>Canonical</span><strong>{summary?.canonical?.enabled ? (summary.canonical.matched ? 'Verified' : 'Mismatch') : 'Not set'}</strong></div>
+        <div className="mini-stat"><span>Mode</span><strong>Read-only</strong></div>
       </div>
     </aside>
   )
 }
 
-function Toolbar({ active }) {
+function Toolbar({ active, healthy }) {
   const actions = ['Overview', 'Send', 'Receive', 'Transactions', 'Backup', 'Settings']
   return (
     <div className="toolbar qt-panel">
@@ -70,23 +60,24 @@ function Toolbar({ active }) {
         ))}
       </div>
       <div className="toolbar-right">
-        <span className="status-lamp live" />
-        <span>Wallet synchronized</span>
+        <span className={`status-lamp ${healthy ? 'live' : 'warn'}`} />
+        <span>{healthy ? 'Wallet connected' : 'RPC unavailable'}</span>
       </div>
     </div>
   )
 }
 
-function OverviewTab() {
+function OverviewTab({ summary }) {
+  const txs = summary?.transactions || []
   return (
     <div className="tab-layout two-col">
       <section className="qt-panel padded">
         <div className="section-title">Balances</div>
         <div className="balance-grid">
-          <div className="qt-inset balance-box"><span>Available</span><strong>3,146.74 TRI</strong></div>
-          <div className="qt-inset balance-box"><span>Stake</span><strong>129.88 TRI</strong></div>
-          <div className="qt-inset balance-box"><span>Immature</span><strong>14.28 TRI</strong></div>
-          <div className="qt-inset balance-box"><span>Pending</span><strong>0.00 TRI</strong></div>
+          <div className="qt-inset balance-box"><span>Available</span><strong>{formatTri(summary?.balance)}</strong></div>
+          <div className="qt-inset balance-box"><span>Stake</span><strong>{formatTri(summary?.stake)}</strong></div>
+          <div className="qt-inset balance-box"><span>New Mint</span><strong>{formatTri(summary?.newmint)}</strong></div>
+          <div className="qt-inset balance-box"><span>Expected stake time</span><strong>{formatExpectedTime(summary?.staking?.expectedtime)}</strong></div>
         </div>
 
         <div className="section-title top-gap">Recent transactions</div>
@@ -100,14 +91,14 @@ function OverviewTab() {
             </tr>
           </thead>
           <tbody>
-            {transactionRows.slice(0, 4).map((row) => (
-              <tr key={`${row.date}-${row.address}`}>
-                <td>{row.date}</td>
-                <td>{row.type}</td>
-                <td>{row.address}</td>
-                <td className={row.amount.startsWith('+') ? 'plus' : 'minus'}>{row.amount}</td>
+            {txs.length ? txs.slice(0, 8).map((row, i) => (
+              <tr key={`${row.txid || row.time || i}`}>
+                <td>{row.time ? new Date(row.time * 1000).toLocaleString() : '—'}</td>
+                <td>{row.category || row.account || 'transaction'}</td>
+                <td>{row.address || '—'}</td>
+                <td className={Number(row.amount) >= 0 ? 'plus' : 'minus'}>{formatTri(row.amount)}</td>
               </tr>
-            ))}
+            )) : <tr><td colSpan="4">No transactions returned.</td></tr>}
           </tbody>
         </table>
       </section>
@@ -115,15 +106,15 @@ function OverviewTab() {
       <section className="qt-panel padded side-column">
         <div className="section-title">Status</div>
         <div className="status-stack">
-          <div className="qt-inset status-card"><span>Sync progress</span><strong>100%</strong></div>
-          <div className="qt-inset status-card"><span>Best block</span><strong>2200941</strong></div>
-          <div className="qt-inset status-card"><span>Canonical</span><strong>Matched</strong></div>
-          <div className="qt-inset status-card"><span>Peers</span><strong>8 active</strong></div>
+          <div className="qt-inset status-card"><span>Network</span><strong>{summary?.network || '—'}</strong></div>
+          <div className="qt-inset status-card"><span>Best block</span><strong>{summary?.blocks ?? '—'}</strong></div>
+          <div className="qt-inset status-card"><span>Connections</span><strong>{summary?.connections ?? '—'}</strong></div>
+          <div className="qt-inset status-card"><span>Canonical</span><strong>{summary?.canonical?.enabled ? (summary.canonical.matched ? 'Matched' : 'Mismatch') : 'Not configured'}</strong></div>
         </div>
 
         <div className="section-title top-gap">Warnings</div>
         <div className="qt-inset warning-box">
-          Send controls stay disabled until a wallet-safe backend is wired and verified.
+          Send controls stay disabled until wallet-safe write paths are explicitly implemented and verified.
         </div>
       </section>
     </div>
@@ -135,37 +126,23 @@ function SendTab() {
     <section className="qt-panel padded form-screen">
       <div className="section-title">Send Coins</div>
       <div className="qt-form-grid">
-        <label>
-          Pay To
-          <input placeholder="TRI address" readOnly />
-        </label>
-        <label>
-          Label
-          <input placeholder="Optional label" readOnly />
-        </label>
-        <label>
-          Amount
-          <input placeholder="0.00 TRI" readOnly />
-        </label>
-        <label>
-          Fee
-          <input placeholder="Auto-estimated" readOnly />
-        </label>
-        <label className="wide">
-          Memo
-          <textarea placeholder="Optional note" readOnly />
-        </label>
+        <label>Pay To<input placeholder="TRI address" readOnly /></label>
+        <label>Label<input placeholder="Optional label" readOnly /></label>
+        <label>Amount<input placeholder="0.00 TRI" readOnly /></label>
+        <label>Fee<input placeholder="Auto-estimated" readOnly /></label>
+        <label className="wide">Memo<textarea placeholder="Optional note" readOnly /></label>
       </div>
       <div className="button-row">
         <button className="qt-button primary" disabled>Send</button>
         <button className="qt-button">Clear</button>
       </div>
-      <div className="helper-text">This screen is scaffolded first. Real sending comes after wallet-safe RPC and explicit protections.</div>
+      <div className="helper-text">Write actions are intentionally disabled in this first live slice.</div>
     </section>
   )
 }
 
-function ReceiveTab() {
+function ReceiveTab({ summary }) {
+  const rows = summary?.received || []
   return (
     <section className="qt-panel padded">
       <div className="section-title">Receive Coins</div>
@@ -179,24 +156,27 @@ function ReceiveTab() {
           <tr>
             <th>Label</th>
             <th>Address</th>
-            <th>Balance</th>
+            <th>Amount</th>
+            <th>Confirmations</th>
           </tr>
         </thead>
         <tbody>
-          {receiveRows.map((row) => (
-            <tr key={row.address}>
-              <td>{row.label}</td>
-              <td>{row.address}</td>
-              <td>{row.amount}</td>
+          {rows.length ? rows.map((row, i) => (
+            <tr key={`${row.address || i}`}>
+              <td>{row.account || row.label || '—'}</td>
+              <td>{row.address || '—'}</td>
+              <td>{formatTri(row.amount)}</td>
+              <td>{row.confirmations ?? '—'}</td>
             </tr>
-          ))}
+          )) : <tr><td colSpan="4">No receive addresses returned.</td></tr>}
         </tbody>
       </table>
     </section>
   )
 }
 
-function TransactionsTab() {
+function TransactionsTab({ summary }) {
+  const rows = summary?.transactions || []
   return (
     <section className="qt-panel padded">
       <div className="section-title">Transactions</div>
@@ -212,27 +192,28 @@ function TransactionsTab() {
             <th>Date</th>
             <th>Type</th>
             <th>Address</th>
-            <th>Status</th>
+            <th>Confirmations</th>
             <th>Amount</th>
           </tr>
         </thead>
         <tbody>
-          {transactionRows.map((row) => (
-            <tr key={`${row.date}-${row.amount}`}>
-              <td>{row.date}</td>
-              <td>{row.type}</td>
-              <td>{row.address}</td>
-              <td>{row.status}</td>
-              <td className={row.amount.startsWith('+') ? 'plus' : 'minus'}>{row.amount}</td>
+          {rows.length ? rows.map((row, i) => (
+            <tr key={`${row.txid || row.time || i}`}>
+              <td>{row.time ? new Date(row.time * 1000).toLocaleString() : '—'}</td>
+              <td>{row.category || row.account || 'transaction'}</td>
+              <td>{row.address || '—'}</td>
+              <td>{row.confirmations ?? '—'}</td>
+              <td className={Number(row.amount) >= 0 ? 'plus' : 'minus'}>{formatTri(row.amount)}</td>
             </tr>
-          ))}
+          )) : <tr><td colSpan="5">No transactions returned.</td></tr>}
         </tbody>
       </table>
     </section>
   )
 }
 
-function AddressBookTab() {
+function AddressBookTab({ summary }) {
+  const rows = summary?.received || []
   return (
     <section className="qt-panel padded">
       <div className="section-title">Address Book</div>
@@ -245,16 +226,31 @@ function AddressBookTab() {
           </tr>
         </thead>
         <tbody>
-          <tr><td>Main staking</td><td>TBxrQx34J2mRvkmixnrdUynwzEC3wPdgb3</td><td>Receiving</td></tr>
-          <tr><td>Savings</td><td>TZ4ZrftdfK9MLCvo63uR3ZcPibFEG54WT7</td><td>Receiving</td></tr>
-          <tr><td>Merchant payout</td><td>TAaa8oW7g2K3fMVsJPn3k7AwtkP2r9Vz19</td><td>Sending</td></tr>
+          {rows.length ? rows.map((row, i) => (
+            <tr key={`${row.address || i}`}>
+              <td>{row.account || row.label || '—'}</td>
+              <td>{row.address || '—'}</td>
+              <td>Receiving</td>
+            </tr>
+          )) : <tr><td colSpan="3">No addresses returned.</td></tr>}
         </tbody>
       </table>
     </section>
   )
 }
 
-function DebugTab() {
+function DebugTab({ summary, error }) {
+  const debugRows = [
+    ['Version', summary?.version ?? '—'],
+    ['Protocol', summary?.protocolversion ?? '—'],
+    ['Wallet version', summary?.walletversion ?? '—'],
+    ['Blocks', summary?.blocks ?? '—'],
+    ['Best block', summary?.bestblock ?? '—'],
+    ['Connections', summary?.connections ?? '—'],
+    ['Staking enabled', summary?.staking?.enabled ? 'yes' : 'no'],
+    ['Staking active', summary?.staking?.staking ? 'yes' : 'no'],
+  ]
+
   return (
     <section className="qt-panel padded debug-grid">
       <div>
@@ -263,7 +259,7 @@ function DebugTab() {
           {debugRows.map(([key, value]) => (
             <div key={key} className="debug-row qt-inset">
               <span>{key}</span>
-              <strong>{value}</strong>
+              <strong>{String(value)}</strong>
             </div>
           ))}
         </div>
@@ -271,32 +267,67 @@ function DebugTab() {
       <div>
         <div className="section-title">RPC / Canonical Notes</div>
         <div className="qt-inset console-box">
-          <pre>{`wallet.status = read-only-demo\nnode.status = synced\ncanonical.status = matched\ncanonical.bestblock = 000000000000demo\nnext_step = wire live RPC proxy`}</pre>
+          <pre>{error ? `error = ${error}` : JSON.stringify({
+            canonical: summary?.canonical,
+            staking: summary?.staking,
+          }, null, 2)}</pre>
         </div>
       </div>
     </section>
   )
 }
 
-function TabBody({ active }) {
+function TabBody({ active, summary, error }) {
   const component = useMemo(() => {
     switch (active) {
       case 'Send': return <SendTab />
-      case 'Receive': return <ReceiveTab />
-      case 'Transactions': return <TransactionsTab />
-      case 'Address Book': return <AddressBookTab />
-      case 'Debug Window': return <DebugTab />
+      case 'Receive': return <ReceiveTab summary={summary} />
+      case 'Transactions': return <TransactionsTab summary={summary} />
+      case 'Address Book': return <AddressBookTab summary={summary} />
+      case 'Debug Window': return <DebugTab summary={summary} error={error} />
       case 'Overview':
       default:
-        return <OverviewTab />
+        return <OverviewTab summary={summary} />
     }
-  }, [active])
+  }, [active, summary, error])
 
   return component
 }
 
 export default function App() {
   const [active, setActive] = useState('Overview')
+  const [summary, setSummary] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      try {
+        const res = await fetch('/api/wallet/summary')
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed to load wallet summary')
+        if (!cancelled) {
+          setSummary(data)
+          setError('')
+        }
+      } catch (err) {
+        if (!cancelled) setError(err.message)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    load()
+    const t = setInterval(load, 15000)
+    return () => {
+      cancelled = true
+      clearInterval(t)
+    }
+  }, [])
+
+  const healthy = Boolean(summary) && !error
 
   return (
     <div className="app-shell">
@@ -308,19 +339,19 @@ export default function App() {
             <span className="traffic green" />
             <span className="app-title">TRIdock Web Wallet — {active}</span>
           </div>
-          <div className="titlebar-right">Black/Red TRI Theme · Qt-Inspired</div>
+          <div className="titlebar-right">{loading ? 'Loading live wallet data…' : healthy ? 'Live read-only RPC connected' : 'Read-only RPC not connected'}</div>
         </div>
 
         <div className="workspace">
-          <Sidebar active={active} onSelect={setActive} />
+          <Sidebar active={active} onSelect={setActive} summary={summary} />
           <section className="main-area">
-            <Toolbar active={active} />
-            <TabBody active={active} />
+            <Toolbar active={active} healthy={healthy} />
+            <TabBody active={active} summary={summary} error={error} />
             <footer className="footer-bar qt-panel">
-              <div className="footer-item"><span className="status-lamp live" /> Synced</div>
-              <div className="footer-item"><span className="status-lamp ok" /> Staking</div>
-              <div className="footer-item"><span className="status-lamp ok" /> Canonical Match</div>
-              <div className="footer-item right">Wallet send controls intentionally locked for now</div>
+              <div className="footer-item"><span className={`status-lamp ${healthy ? 'live' : 'warn'}`} /> {healthy ? 'RPC live' : 'RPC unavailable'}</div>
+              <div className="footer-item"><span className={`status-lamp ${summary?.staking?.staking ? 'ok' : 'warn'}`} /> {summary?.staking?.staking ? 'Staking' : 'Not staking'}</div>
+              <div className="footer-item"><span className={`status-lamp ${summary?.canonical?.matched ? 'ok' : 'warn'}`} /> {summary?.canonical?.enabled ? (summary?.canonical?.matched ? 'Canonical Match' : 'Canonical Mismatch') : 'Canonical not configured'}</div>
+              <div className="footer-item right">Send controls intentionally locked for now</div>
             </footer>
           </section>
         </div>
