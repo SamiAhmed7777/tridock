@@ -1,14 +1,14 @@
 services:
   tridock:
-    # Pre-built from Docker Hub — no build needed
+    build: .
     image: samiahmed7777/tridock:latest
-    # For local development, replace the above with: build: .
     container_name: tridock-dev
     restart: unless-stopped
     ports:
       - "24116:24112/tcp"
       - "24116:24112/udp"
       - "19116:19112/tcp"
+      - "4177:4177/tcp"
     environment:
       TRI_MODE: full
       TRI_NODE_NAME: tridock-dev
@@ -34,6 +34,7 @@ services:
       TRI_PORT: "24112"
       TRI_MAX_CONNECTIONS: "64"
       TRI_DBCACHE: "512"
+      PORT: "4177"
       TRI_ENABLE_WRITE_OPS: "1"
       TRI_ALLOW_SEND_BROADCAST: "1"
       TRI_ALLOW_WALLET_UNLOCK: "1"
@@ -49,38 +50,6 @@ services:
       - tri_config:/tri/config
       - tri_ui_data:/tri/ui-data
       - tri_logs:/tri/logs
-
-  tridock-web-wallet:
-    # Pre-built from Docker Hub — no build needed
-    image: samiahmed7777/tridock-web-wallet:latest
-    # For local development, replace the above with: build: ../tri-wallet-web
-    container_name: tridock-web-wallet
-    restart: unless-stopped
-    ports:
-      - "4177:4177"
-    environment:
-      PORT: "4177"
-      TRI_RPC_URL: "http://tridock:19112/"
-      TRI_RPC_USER: tri
-      TRI_RPC_PASSWORD: change-me
-      TRI_CANONICAL_RPC_URL: ""
-      TRI_CANONICAL_RPC_USER: tri
-      TRI_CANONICAL_RPC_PASSWORD: change-me
-      TRI_ENABLE_WRITE_OPS: "1"
-      TRI_ALLOW_SEND_BROADCAST: "1"
-      TRI_ALLOW_WALLET_UNLOCK: "1"
-      TRI_WALLET_EXPORT_PATH: "/tri/data/wallet.dat"
-      TRI_WALLET_EXPORT_ALLOWLIST: "/tri/data"
-      TRI_WALLET_WEB_DATA_DIR: "/app/data"
-      TRI_STATE_DIR: "/tri/state"
-    volumes:
-      - tri_state:/tri/state:ro
-      - tri_data:/tri/data:ro
-      - tri_ui_data:/app/data
-      - tri_backups:/tri/backups
-      - tri_logs:/tri/logs:ro
-    depends_on:
-      - tridock
 
 volumes:
   tri_data:
