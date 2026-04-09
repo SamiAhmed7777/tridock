@@ -486,14 +486,33 @@ app.post('/api/wallet/send/broadcast', async (req, res) => {
   const total = Number((numericAmount + feeEstimate).toFixed(8))
   const blockedReasons = [...capabilities.send.blockedReasons]
 
-  if (previewValidation?.isvalid === false) blockedReasons.push('invalid-address')
-  if (total > balance) blockedReasons.push('insufficient-balance')
+  // Short-circuit on obviously invalid address before any RPC call
+  if (previewValidation?.isvalid === false) {
+    return res.status(400).json({
+      ok: false,
+      code: 'INVALID_ADDRESS',
+      message: 'The destination address is not valid. Please double-check it.',
+      nodeState,
+      capabilities,
+    })
+  }
 
-  if (blockedReasons.length > 0) {
+  // Wallet must be unlocked before sending
+  if (walletMeta.encrypted && walletMeta.locked) {
     return res.status(409).json({
       ok: false,
-      code: 'SEND_NOT_READY',
-      message: 'This wallet instance is not ready to broadcast the transaction.',
+      code: 'WALLET_LOCKED',
+      message: 'The wallet is locked. Unlock it first before sending.',
+      nodeState,
+      capabilities,
+    })
+  }
+
+  if (total > balance) {
+    return res.status(409).json({
+      ok: false,
+      code: 'INSUFFICIENT_BALANCE',
+      message: `Insufficient balance. Need ${total} TRI but only ${balance} TRI is spendable.`,
       nodeState,
       capabilities,
       preview: {
@@ -503,7 +522,6 @@ app.post('/api/wallet/send/broadcast', async (req, res) => {
         estimatedFee: feeEstimate,
         estimatedTotal: total,
         spendableBalance: balance,
-        blockedReasons,
       },
     })
   }
@@ -524,7 +542,14 @@ app.post('/api/wallet/send/broadcast', async (req, res) => {
       message: 'Transaction broadcast submitted.',
     })
   } catch (error) {
-    res.status(500).json({ ok: false, code: 'SEND_BROADCAST_FAILED', message: error.message, nodeState, capabilities })
+    // Map common RPC errors to friendly codes
+    let code = 'SEND_BROADCAST_FAILED'
+    if (/empty passphrase/i.test(error.message)) code = 'PASSPHRASE_EMPTY'
+    else if (/wallet is already unlocked/i.test(error.message)) code = 'ALREADY_UNLOCKED'
+    else if (/couldn't decrypt passphrase/i.test(error.message)) code = 'BAD_PASSPHRASE'
+    else if (/Amount exceeds available balance/i.test(error.message)) code = 'INSUFFICIENT_BALANCE'
+
+    res.status(500).json({ ok: false, code, message: error.message, nodeState, capabilities })
   }
 })
 

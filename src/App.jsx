@@ -257,9 +257,17 @@ export default function App() {
   const [addressGenStatus, setAddressGenStatus] = useState('')
   const [walletActionStatus, setWalletActionStatus] = useState('')
   const [broadcastStatus, setBroadcastStatus] = useState('')
+  const [broadcastResult, setBroadcastResult] = useState(null)
 
+  // Clear broadcast result when user starts editing a new send
   useEffect(() => {
-    let cancelled = false
+    if (broadcastResult) {
+      setBroadcastResult(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendForm.address, sendForm.amount, sendForm.memo])
+
+  useEffect(() => {    let cancelled = false
 
     async function load() {
       try {
@@ -481,13 +489,23 @@ export default function App() {
         body: JSON.stringify({ ...sendForm, confirm: true }),
       })
       const data = await res.json().catch(() => null)
-      setBroadcastStatus(data?.message || (data?.ok ? `Broadcast sent: ${data.txid}` : `Broadcast failed (${res.status})`))
+      const sentAmount = data?.sent?.amount
+      const sentAddr = data?.sent?.address
+      if (data?.ok) {
+        setBroadcastResult({ ok: true, txid: data.txid, sent: data.sent, message: data?.message })
+        setBroadcastStatus(`Sent ${sentAmount} TRI → ${shortAddress(sentAddr)}`)
+      } else {
+        setBroadcastResult({ ok: false, code: data?.code || 'UNKNOWN', message: data?.message || `Broadcast failed (${res.status})` })
+        setBroadcastStatus(data?.message || `Broadcast failed (${res.status})`)
+      }
       if (data?.ok) {
         setSendPreviewData(null)
         setSendForm({ address: '', amount: '', memo: '' })
+        setBroadcastResult(null) // keep showing result until user starts a new send
       }
     } catch (error) {
       setBroadcastStatus(error?.message || 'Broadcast failed')
+      setBroadcastResult({ ok: false, code: 'NETWORK_ERROR', message: error?.message || 'Network error' })
     }
   }
 
@@ -589,6 +607,30 @@ export default function App() {
           </div>
           {sendPreviewStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{sendPreviewStatus}</div> : null}
           {broadcastStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{broadcastStatus}</div> : null}
+          {broadcastResult ? (
+            <div style={{ padding: 12, borderRadius: 10, background: broadcastResult.ok ? 'rgba(97,214,128,.1)' : 'rgba(255,125,125,.1)', border: `1px solid ${broadcastResult.ok ? '#8df0b1' : '#ff7d7d'}`, color: broadcastResult.ok ? '#8df0b1' : '#ff7d7d' }}>
+              {broadcastResult.ok ? (
+                <>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>Transaction submitted ✓</div>
+                  {broadcastResult.sent ? (
+                    <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
+                      <div>Amount: <span style={{ color: '#cdd6e2' }}>{broadcastResult.sent.amount} TRI</span></div>
+                      <div>To: <span style={{ color: '#cdd6e2', fontFamily: 'monospace' }}>{broadcastResult.sent.address}</span></div>
+                      <div>Fee: <span style={{ color: '#cdd6e2' }}>{broadcastResult.sent.estimatedFee} TRI</span></div>
+                      <div>Total: <span style={{ color: '#cdd6e2' }}>{broadcastResult.sent.estimatedTotal} TRI</span></div>
+                    </div>
+                  ) : null}
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#aeb7c4' }}>TXID: <span style={{ fontFamily: 'monospace', color: '#cdd6e2' }}>{broadcastResult.txid}</span></div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Broadcast failed ✗</div>
+                  <div style={{ fontSize: 13, color: '#cdd6e2' }}>{broadcastResult.message}</div>
+                  {broadcastResult.code ? <div style={{ fontSize: 11, color: '#aeb7c4', marginTop: 4 }}>Code: {broadcastResult.code}</div> : null}
+                </>
+              )}
+            </div>
+          ) : null}
         </div>
       </Card>
 
