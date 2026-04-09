@@ -259,6 +259,7 @@ export default function App() {
   const [broadcastStatus, setBroadcastStatus] = useState('')
   const [broadcastResult, setBroadcastResult] = useState(null)
   const [walletCountdown, setWalletCountdown] = useState(null)
+  const [nodes, setNodes] = useState([])
 
   // Tick wallet unlock countdown every second; when it hits 0, refresh capabilities
   const countdownRef = useRef(null)
@@ -300,12 +301,13 @@ export default function App() {
 
     async function load() {
       try {
-        const [healthRes, stateRes, summaryRes, contractsRes, labelsRes] = await Promise.all([
+        const [healthRes, stateRes, summaryRes, contractsRes, labelsRes, nodesRes] = await Promise.all([
           fetch('/api/health'),
           fetch('/api/node/state'),
           fetch('/api/wallet/summary'),
           fetch('/api/wallet/contracts'),
           fetch('/api/wallet/labels'),
+          fetch('/api/nodes'),
         ])
 
         const healthData = await healthRes.json().catch(() => null)
@@ -313,6 +315,7 @@ export default function App() {
         const summaryData = await summaryRes.json().catch(() => null)
         const contractsData = await contractsRes.json().catch(() => null)
         const labelsData = await labelsRes.json().catch(() => null)
+        const nodesData = await nodesRes.json().catch(() => null)
 
         if (cancelled) return
 
@@ -320,6 +323,7 @@ export default function App() {
         setNodeState(stateData)
         setContracts(contractsData)
         setLabels(labelsData?.labels || {})
+        setNodes(nodesData?.nodes || [])
         setLastUpdated(new Date())
 
         if (summaryData) {
@@ -416,6 +420,27 @@ export default function App() {
     const res = await fetch('/api/wallet/labels')
     const data = await res.json()
     setLabels(data.labels || {})
+  }
+
+  async function handleSwitchNode(nodeId) {
+    try {
+      const res = await fetch('/api/nodes/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodeId }),
+      })
+      const data = await res.json()
+      if (data?.ok) {
+        // Refresh nodes list and force a full data reload
+        const nodesRes = await fetch('/api/nodes')
+        const nodesData = await nodesRes.json()
+        if (nodesData?.nodes) setNodes(nodesData.nodes)
+        // Trigger a full refresh by clearing current data briefly
+        setSummary(null)
+        setSummaryError('')
+        // The 10s poll will pick up the new node data automatically
+      }
+    } catch { /* ignore switch errors */ }
   }
 
   async function handleSaveLabel(address) {
@@ -856,7 +881,27 @@ export default function App() {
                   <div style={{ color: '#aeb7c4', marginTop: 4 }}>A full Docker-based Triangles wallet with live controls, clear readiness, and real node visibility</div>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <select
+                  value={nodes.find((n) => n.active)?.id || ''}
+                  onChange={(e) => handleSwitchNode(e.target.value)}
+                  style={{
+                    background: '#232730',
+                    color: '#cdd6e2',
+                    border: '1px solid #404652',
+                    borderRadius: 8,
+                    padding: '6px 10px',
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    maxWidth: 200,
+                  }}
+                >
+                  {nodes.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.name}{n.active ? ' ★' : ''}
+                    </option>
+                  ))}
+                </select>
                 <StatusPill>{walletMode}</StatusPill>
                 <StatusPill color="#ffd38a" background="rgba(255,211,138,.12)">{nodeState?.status || 'unknown node state'}</StatusPill>
                 {health?.writeOpsEnabled ? <StatusPill color="#8df0b1" background="rgba(97,214,128,.12)">guarded writes enabled</StatusPill> : null}

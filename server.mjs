@@ -31,6 +31,54 @@ const allowSendBroadcast = process.env.TRI_ALLOW_SEND_BROADCAST === '1'
 const allowWalletUnlock = process.env.TRI_ALLOW_WALLET_UNLOCK === '1'
 const unlockTimeoutSeconds = Number(process.env.TRI_WALLET_UNLOCK_TIMEOUT || '180')
 
+// Multi-node support
+const nodesFile = path.join(dataDir, 'nodes.json')
+
+// Build default node from env
+const defaultNode = {
+  id: 'local',
+  name: process.env.TRI_NODE_NAME || 'Local',
+  url: rpcUrl,
+  user: rpcUser,
+  password: rpcPassword,
+}
+
+let savedNodes = [defaultNode]
+let activeNodeId = defaultNode.id
+
+async function loadNodes() {
+  try {
+    const data = await fs.readFile(nodesFile, 'utf8')
+    const parsed = JSON.parse(data)
+    if (Array.isArray(parsed.nodes) && parsed.nodes.length > 0) {
+      savedNodes = parsed.nodes
+    }
+    if (parsed.activeNodeId && savedNodes.find((n) => n.id === parsed.activeNodeId)) {
+      activeNodeId = parsed.activeNodeId
+    }
+  } catch { /* use defaults */ }
+}
+
+async function saveNodes() {
+  await ensureDataDirs()
+  await fs.writeFile(nodesFile, JSON.stringify({ nodes: savedNodes, activeNodeId }, null, 2))
+}
+
+function getActiveNode() {
+  return savedNodes.find((n) => n.id === activeNodeId) || defaultNode
+}
+
+async function probeNode(node) {
+  try {
+    const info = await rpcCall(node.url, node.user, node.password, 'getinfo')
+    const blocks = await rpcCall(node.url, node.user, node.password, 'getblockcount').catch(() => null)
+    const bestblock = await rpcCall(node.url, node.user, node.password, 'getbestblockhash').catch(() => null)
+    return { ok: true, version: info.version, blocks, bestblock }
+  } catch (err) {
+    return { ok: false, error: err.message }
+  }
+}
+
 const readAllowedMethods = new Set([
   'getblockcount',
   'getbestblockhash',
@@ -104,7 +152,8 @@ async function rpcCall(url, user, password, method, params = []) {
 
 async function rpcOptional(method, params = []) {
   try {
-    return await rpcCall(rpcUrl, rpcUser, rpcPassword, method, params)
+    const node = getActiveNode()
+    return await rpcCall(node.url, node.user, node.password, method, params)
   } catch {
     return null
   }
@@ -344,7 +393,8 @@ app.post('/api/wallet/address/new', async (req, res) => {
   }
 
   try {
-    const address = await rpcCall(rpcUrl, rpcUser, rpcPassword, 'getnewaddress', [String(label || '').trim()])
+    const node = getActiveNode()
+    const address = await rpcCall(node.url, node.user, node.password, 'getnewaddress', [String(label || '').trim()])
     const labels = await readLabels()
     labels[address] = { ...(labels[address] || {}), label: String(label || '').trim(), note: labels[address]?.note || '', createdAt: new Date().toISOString() }
     await writeLabels(labels)
@@ -425,7 +475,8 @@ app.post('/api/wallet/unlock', async (req, res) => {
   }
 
   try {
-    await rpcCall(rpcUrl, rpcUser, rpcPassword, 'walletpassphrase', [walletPassphrase, timeout])
+    const node = getActiveNode()
+    await rpcCall(node.url, node.user, node.password, 'walletpassphrase', [walletPassphrase, timeout])
     const walletMeta = await readWalletStatusInfo()
     res.json({
       ok: true,
@@ -445,7 +496,8 @@ app.post('/api/wallet/unlock', async (req, res) => {
 app.post('/api/wallet/lock', async (_req, res) => {
   const nodeState = await readNodeState()
   try {
-    await rpcCall(rpcUrl, rpcUser, rpcPassword, 'walletlock')
+    const node = getActiveNode()
+    await rpcCall(node.url, node.user, node.password, 'walletlock')
     const walletMeta = await readWalletStatusInfo()
     res.json({
       ok: true,
@@ -527,7 +579,8 @@ app.post('/api/wallet/send/broadcast', async (req, res) => {
   }
 
   try {
-    const txid = await rpcCall(rpcUrl, rpcUser, rpcPassword, 'sendtoaddress', [String(address).trim(), numericAmount, String(memo || '')])
+    const node = getActiveNode()
+    const txid = await rpcCall(node.url, node.user, node.password, 'sendtoaddress', [String(address).trim(), numericAmount, String(memo || '')])
     res.json({
       ok: true,
       nodeState,
@@ -578,16 +631,17 @@ app.get('/api/wallet/features', async (_req, res) => {
 
 app.get('/api/wallet/summary', async (_req, res) => {
   const nodeState = await readNodeState()
+  const node = getActiveNode()
 
   try {
     const [info, staking, txs, received, blockCount, bestBlock, connections, walletInfo, walletStatus, peerInfo, labels, capabilities] = await Promise.all([
-      rpcCall(rpcUrl, rpcUser, rpcPassword, 'getinfo'),
+      rpcCall(node.url, node.user, node.password, 'getinfo'),
       rpcOptional('getstakinginfo'),
       rpcOptional('listtransactions', ['*', 50]),
       rpcOptional('listreceivedbyaddress', [0, true]),
-      rpcCall(rpcUrl, rpcUser, rpcPassword, 'getblockcount'),
-      rpcCall(rpcUrl, rpcUser, rpcPassword, 'getbestblockhash'),
-      rpcCall(rpcUrl, rpcUser, rpcPassword, 'getconnectioncount'),
+      rpcCall(node.url, node.user, node.password, 'getblockcount'),
+      rpcCall(node.url, node.user, node.password, 'getbestblockhash'),
+      rpcCall(node.url, node.user, node.password, 'getconnectioncount'),
       rpcOptional('getwalletinfo'),
       rpcOptional('getwalletstatus'),
       rpcOptional('getpeerinfo'),
@@ -741,20 +795,73 @@ app.post('/api/rpc', async (req, res) => {
     if (!readAllowedMethods.has(method)) {
       return res.status(403).json({ error: 'Method not allowed' })
     }
-    const result = await rpcCall(rpcUrl, rpcUser, rpcPassword, method, params)
+    const result = await rpcCall(getActiveNode().url, getActiveNode().user, getActiveNode().password, method, params)
     res.json({ result })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
 })
 
+// ─── Multi-node API ───────────────────────────────────────────────────────────
+
+app.get('/api/nodes', async (_req, res) => {
+  // Probe all nodes in parallel
+  const withStatus = await Promise.all(
+    savedNodes.map(async (n) => {
+      const probe = await probeNode(n)
+      return {
+        id: n.id,
+        name: n.name,
+        url: n.url,
+        active: n.id === activeNodeId,
+        status: probe.ok ? { version: probe.version, blocks: probe.blocks, bestblock: probe.bestblock } : { error: probe.error },
+      }
+    })
+  )
+  res.json({ nodes: withStatus })
+})
+
+app.post('/api/nodes/switch', async (req, res) => {
+  const { nodeId } = req.body || {}
+  if (!nodeId) return res.status(400).json({ error: 'nodeId is required' })
+  const found = savedNodes.find((n) => n.id === nodeId)
+  if (!found) return res.status(404).json({ error: 'Node not found' })
+  activeNodeId = nodeId
+  await saveNodes()
+  res.json({ ok: true, activeNode: { id: found.id, name: found.name, url: found.url } })
+})
+
+app.post('/api/nodes', async (req, res) => {
+  const { name, url, user, password } = req.body || {}
+  if (!name || !url) return res.status(400).json({ error: 'name and url are required' })
+  const id = `node-${Date.now()}`
+  savedNodes.push({ id, name: String(name).trim(), url: String(url).trim(), user: String(user || '').trim(), password: String(password || '').trim() })
+  await saveNodes()
+  res.json({ ok: true, node: savedNodes.find((n) => n.id === id) })
+})
+
+app.delete('/api/nodes/:index', async (req, res) => {
+  const idx = Number(req.params.index)
+  if (isNaN(idx) || idx < 0 || idx >= savedNodes.length) return res.status(404).json({ error: 'Invalid index' })
+  if (savedNodes.length <= 1) return res.status(400).json({ error: 'Cannot delete the last node' })
+  const removed = savedNodes.splice(idx, 1)[0]
+  if (removed.id === activeNodeId) {
+    activeNodeId = savedNodes[0].id
+  }
+  await saveNodes()
+  res.json({ ok: true })
+})
+
+// ─── Static serving ──────────────────────────────────────────────────────────
+
 app.use(express.static(distDir))
 app.use((_req, res) => {
   res.sendFile(path.join(distDir, 'index.html'))
 })
 
-ensureDataDirs().then(() => {
+ensureDataDirs().then(() => loadNodes()).then(() => {
   app.listen(PORT, () => {
-    console.log(`TRIdock Web Wallet listening on :${PORT}`)
+    const node = getActiveNode()
+    console.log(`TRIdock Web Wallet listening on :${PORT} (active node: ${node.name})`)
   })
 })
