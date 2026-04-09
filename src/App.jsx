@@ -260,15 +260,27 @@ export default function App() {
   const [broadcastResult, setBroadcastResult] = useState(null)
   const [walletCountdown, setWalletCountdown] = useState(null)
 
-  // Tick wallet unlock countdown every second
+  // Tick wallet unlock countdown every second; when it hits 0, refresh capabilities
+  const countdownRef = useRef(null)
   useEffect(() => {
-    const update = () => {
+    const update = async () => {
       const until = capabilities?.wallet?.unlockedUntil
       if (until && until > 0) {
         const remaining = until - Math.floor(Date.now() / 1000)
         setWalletCountdown(remaining > 0 ? remaining : 0)
+        // When countdown crosses zero, refresh capabilities to reflect locked state
+        if (countdownRef.current > 0 && remaining <= 0) {
+          countdownRef.current = null
+          try {
+            const r = await fetch('/api/wallet/contracts')
+            const data = await r.json().catch(() => null)
+            if (data) setContracts(data)
+          } catch { /* ignore */ }
+        }
+        countdownRef.current = remaining > 0 ? remaining : null
       } else {
         setWalletCountdown(null)
+        countdownRef.current = null
       }
     }
     update()
