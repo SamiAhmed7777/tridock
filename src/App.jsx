@@ -261,6 +261,9 @@ export default function App() {
   const [walletCountdown, setWalletCountdown] = useState(null)
   const [nodes, setNodes] = useState([])
   const [system, setSystem] = useState(null)
+  const [showAddNode, setShowAddNode] = useState(false)
+  const [addNodeForm, setAddNodeForm] = useState({ name: '', url: '', user: '', password: '' })
+  const [addNodeStatus, setAddNodeStatus] = useState('')
 
   // Tick wallet unlock countdown every second; when it hits 0, refresh capabilities
   const countdownRef = useRef(null)
@@ -445,6 +448,36 @@ export default function App() {
         // The 10s poll will pick up the new node data automatically
       }
     } catch { /* ignore switch errors */ }
+  }
+
+  async function handleAddNode() {
+    if (!addNodeForm.name || !addNodeForm.url) {
+      setAddNodeStatus('Name and RPC URL are required')
+      return
+    }
+    try {
+      const res = await fetch('/api/nodes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addNodeForm),
+      })
+      const data = await res.json()
+      if (data?.ok) {
+        setAddNodeStatus(`Node "${data.node.name}" added — switching to it now`)
+        // Refresh nodes list and switch to the new node
+        const nodesRes = await fetch('/api/nodes')
+        const nodesData = await nodesRes.json()
+        if (nodesData?.nodes) setNodes(nodesData.nodes)
+        await handleSwitchNode(data.node.id)
+        setShowAddNode(false)
+        setAddNodeForm({ name: '', url: '', user: '', password: '' })
+        setAddNodeStatus('')
+      } else {
+        setAddNodeStatus(data?.error || 'Failed to add node')
+      }
+    } catch (err) {
+      setAddNodeStatus(err?.message || 'Failed to add node')
+    }
   }
 
   async function handleSaveLabel(address) {
@@ -937,6 +970,13 @@ export default function App() {
                     </option>
                   ))}
                 </select>
+                <button
+                  onClick={() => setShowAddNode((v) => !v)}
+                  title="Add a new node"
+                  style={{ background: '#2a3040', color: '#8df0b1', border: '1px solid #404652', borderRadius: 8, padding: '5px 10px', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}
+                >
+                  +
+                </button>
                 <StatusPill>{walletMode}</StatusPill>
                 <StatusPill color="#ffd38a" background="rgba(255,211,138,.12)">{nodeState?.status || 'unknown node state'}</StatusPill>
                 {health?.writeOpsEnabled ? <StatusPill color="#8df0b1" background="rgba(97,214,128,.12)">guarded writes enabled</StatusPill> : null}
@@ -948,6 +988,68 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {showAddNode ? (
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid #343942', background: '#1a1e26' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#8df0b1', marginBottom: 10 }}>Add a new TRIdock node</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
+                <div>
+                  <div style={{ fontSize: 11, color: '#aeb7c4', marginBottom: 4 }}>Name</div>
+                  <input
+                    placeholder="DNS2, Contabo, etc."
+                    value={addNodeForm.name}
+                    onChange={(e) => setAddNodeForm((f) => ({ ...f, name: e.target.value }))}
+                    style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#aeb7c4', marginBottom: 4 }}>RPC URL</div>
+                  <input
+                    placeholder="http://host:19119"
+                    value={addNodeForm.url}
+                    onChange={(e) => setAddNodeForm((f) => ({ ...f, url: e.target.value }))}
+                    style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#aeb7c4', marginBottom: 4 }}>RPC User</div>
+                  <input
+                    placeholder="user"
+                    value={addNodeForm.user}
+                    onChange={(e) => setAddNodeForm((f) => ({ ...f, user: e.target.value }))}
+                    style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#aeb7c4', marginBottom: 4 }}>RPC Password</div>
+                  <input
+                    type="password"
+                    placeholder="password"
+                    value={addNodeForm.password}
+                    onChange={(e) => setAddNodeForm((f) => ({ ...f, password: e.target.value }))}
+                    style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={handleAddNode}
+                    style={{ background: '#2a7a4a', color: '#8df0b1', border: '1px solid #4a9a6a', borderRadius: 6, padding: '6px 14px', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}
+                  >
+                    Add
+                  </button>
+                  <button
+                    onClick={() => { setShowAddNode(false); setAddNodeStatus('') }}
+                    style={{ background: '#2a3040', color: '#aeb7c4', border: '1px solid #404652', borderRadius: 6, padding: '6px 10px', fontSize: 13, cursor: 'pointer' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+              {addNodeStatus ? (
+                <div style={{ marginTop: 8, fontSize: 12, color: addNodeStatus.startsWith('Node') ? '#8df0b1' : '#ff7d7d' }}>{addNodeStatus}</div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div style={{ padding: 18 }}>
             <NavTabs active={activeTab} onChange={setActiveTab} />
