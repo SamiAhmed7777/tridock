@@ -258,6 +258,23 @@ export default function App() {
   const [walletActionStatus, setWalletActionStatus] = useState('')
   const [broadcastStatus, setBroadcastStatus] = useState('')
   const [broadcastResult, setBroadcastResult] = useState(null)
+  const [walletCountdown, setWalletCountdown] = useState(null)
+
+  // Tick wallet unlock countdown every second
+  useEffect(() => {
+    const update = () => {
+      const until = capabilities?.wallet?.unlockedUntil
+      if (until && until > 0) {
+        const remaining = until - Math.floor(Date.now() / 1000)
+        setWalletCountdown(remaining > 0 ? remaining : 0)
+      } else {
+        setWalletCountdown(null)
+      }
+    }
+    update()
+    const id = setInterval(update, 1000)
+    return () => clearInterval(id)
+  }, [capabilities?.wallet?.unlockedUntil])
 
   // Clear broadcast result when user starts editing a new send
   useEffect(() => {
@@ -529,6 +546,36 @@ export default function App() {
         <Card title="Transactions">
           <div style={{ fontSize: 28, fontWeight: 800 }}>{Array.isArray(summary?.transactions) ? summary.transactions.length : 0}</div>
           <div style={{ color: '#aeb7c4', marginTop: 8 }}>Latest wallet activity snapshot</div>
+        </Card>
+        <Card title="Wallet security" tone={capabilities?.wallet?.locked !== false ? 'warning' : 'ok'}>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>{capabilities?.wallet?.locked === false ? 'Unlocked' : 'Locked'}</div>
+          {walletCountdown > 0 ? (
+            <div style={{ color: '#8df0b1', marginTop: 8 }}>
+              Auto-lock in {walletCountdown}s
+            </div>
+          ) : capabilities?.wallet?.locked === false ? (
+            <div style={{ color: '#8df0b1', marginTop: 8 }}>No auto-lock timeout set</div>
+          ) : (
+            <div style={{ color: '#aeb7c4', marginTop: 8 }}>Wallet is locked</div>
+          )}
+          {capabilities?.wallet?.encrypted ? (
+            <div style={{ color: '#aeb7c4', marginTop: 4, fontSize: 12 }}>Encryption: enabled</div>
+          ) : (
+            <div style={{ color: '#aeb7c4', marginTop: 4, fontSize: 12 }}>Encryption: not enabled</div>
+          )}
+          {capabilities?.wallet?.unlockedUntil ? (
+            <div style={{ color: '#aeb7c4', marginTop: 4, fontSize: 12 }}>
+              Expires: {new Date(capabilities.wallet.unlockedUntil * 1000).toLocaleTimeString()}
+            </div>
+          ) : null}
+          {capabilities?.unlock?.available ? (
+            capabilities?.wallet?.locked === false ? (
+              <ActionButton tone="warning" style={{ marginTop: 10 }} onClick={handleLockWallet}>Lock wallet</ActionButton>
+            ) : (
+              <ActionButton tone="ok" style={{ marginTop: 10 }} onClick={handleUnlockWallet}>Unlock wallet</ActionButton>
+            )
+          ) : null}
+          {walletActionStatus ? <div style={{ marginTop: 8, fontSize: 12, color: '#aeb7c4' }}>{walletActionStatus}</div> : null}
         </Card>
       </div>
 
