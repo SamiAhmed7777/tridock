@@ -1,18 +1,20 @@
 # TRIdock Web Wallet
 
-Qt-inspired web wallet UI for TRI, designed to sit safely in front of a TRIdock node.
+Qt-inspired web wallet UI for TRI, designed to be the front-end of a fully functional TRIdock wallet appliance.
 
 ## Current state
-- Multi-tab wallet shell with Overview / Receive / Send / Transactions / Address Book / Backup / Debug views
+- Multi-tab wallet UI with Overview / Receive / Send / Transactions / Address Book / Backup / Debug views
 - Node-backed wallet UI with canonical-chain status support when a canonical RPC endpoint is configured
 - Live node/bootstrap/runtime state rendering even while RPC is warming up
 - Persisted address labels and notes stored by the wallet web app
 - Receive-side copy flow, selected-address panel, QR rendering, and QR download
 - Transaction detail panel with selection state
 - Real send preview endpoint with address validation + fee/total estimation
-- Guarded address-generation endpoint (enabled only when `TRI_ENABLE_WRITE_OPS=1`)
+- Real send broadcast endpoint when write ops and broadcast are enabled
+- Real wallet lock/unlock endpoints when unlock is enabled and a passphrase is configured
+- Real address-generation endpoint (enabled only when `TRI_ENABLE_WRITE_OPS=1`)
 - Backup/export endpoint that can create file-copy exports when `TRI_WALLET_EXPORT_PATH` is configured
-- Final send/broadcast still intentionally gated
+- Capability/readiness model so the UI can tell the truth about what this wallet instance can safely do
 
 ## Environment
 
@@ -25,6 +27,16 @@ Backend server env:
 - `TRI_CANONICAL_RPC_URL` — optional canonical node RPC URL
 - `TRI_CANONICAL_RPC_USER` — optional canonical RPC username
 - `TRI_CANONICAL_RPC_PASSWORD` — optional canonical RPC password
+- `TRI_ENABLE_WRITE_OPS` — set to `1` to allow wallet write-capable API routes
+- `TRI_ALLOW_SEND_BROADCAST` — set to `1` to allow live `sendtoaddress` broadcasts
+- `TRI_ALLOW_WALLET_UNLOCK` — set to `1` to allow server-side wallet unlock/lock routes
+- `TRI_WALLET_PASSPHRASE` — wallet passphrase used by the unlock route
+- `TRI_WALLET_UNLOCK_TIMEOUT` — unlock duration in seconds (default `180`)
+- `TRI_REQUIRE_UNLOCK_FOR_SEND` — defaults to enabled; set to `0` only if the wallet model does not require unlock before send
+- `TRI_WALLET_EXPORT_PATH` — source file path for backup/export copy
+- `TRI_WALLET_EXPORT_ALLOWLIST` — colon-separated list of allowed source path prefixes for export
+- `TRI_WALLET_WEB_DATA_DIR` — directory for labels, notes, and generated exports
+- `TRI_STATE_DIR` — path to published TRIdock runtime state files (default `/tri/state`)
 
 ## Local run
 
@@ -63,10 +75,29 @@ services:
       TRI_CANONICAL_RPC_URL: "http://100.104.4.5:19112/"
       TRI_CANONICAL_RPC_USER: "tri"
       TRI_CANONICAL_RPC_PASSWORD: "your-password"
+      TRI_ENABLE_WRITE_OPS: "1"
+      TRI_ALLOW_SEND_BROADCAST: "1"
+      TRI_ALLOW_WALLET_UNLOCK: "1"
+      TRI_WALLET_PASSPHRASE: "change-me"
+      TRI_WALLET_EXPORT_PATH: "/tri/data/wallet.dat"
+      TRI_WALLET_EXPORT_ALLOWLIST: "/tri/data"
+      TRI_STATE_DIR: "/tri/state"
+    volumes:
+      - tridock-wallet-web-data:/app/data
     depends_on:
       - tridock
+
+volumes:
+  tridock-wallet-web-data:
 ```
 
-## Safety note
+## Design note
 
-This app should never touch raw wallet files directly. It should only talk to a constrained backend API, and write-capable wallet operations should remain gated until they are explicitly implemented and verified.
+This app is not meant to fake wallet behavior. It should expose the real capability state of the containerized wallet instance:
+- what is live now
+- what is blocked and why
+- whether the wallet is locked
+- whether send is actually ready
+- whether the node matches the chain you trust
+
+It should still avoid raw wallet-file manipulation in normal UI flows. Routine wallet actions should go through the TRIdock control/API layer, while explicit backup/export remains a deliberate operator action.

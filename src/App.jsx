@@ -255,6 +255,8 @@ export default function App() {
   const [backupData, setBackupData] = useState(null)
   const [newAddressLabel, setNewAddressLabel] = useState('')
   const [addressGenStatus, setAddressGenStatus] = useState('')
+  const [walletActionStatus, setWalletActionStatus] = useState('')
+  const [broadcastStatus, setBroadcastStatus] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -354,9 +356,10 @@ export default function App() {
     return () => { cancelled = true }
   }, [selectedReceive?.address])
 
-  const walletMode = summary?.rpcReady ? 'live wallet shell' : 'warmup mode'
+  const walletMode = summary?.rpcReady ? 'full wallet mode' : 'warmup mode'
   const canonical = summary?.canonical || { enabled: false }
   const featureFlags = summary?.featureFlags || {}
+  const capabilities = summary?.capabilities || {}
 
   async function handleCopyAddress(address) {
     if (!address) return
@@ -440,6 +443,51 @@ export default function App() {
       }
     } catch (error) {
       setAddressGenStatus(error?.message || 'Address generation unavailable')
+    }
+  }
+
+  async function handleUnlockWallet() {
+    try {
+      const res = await fetch('/api/wallet/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json().catch(() => null)
+      setWalletActionStatus(data?.message || (data?.ok ? 'Wallet unlocked.' : `Wallet unlock unavailable (${res.status})`))
+    } catch (error) {
+      setWalletActionStatus(error?.message || 'Wallet unlock unavailable')
+    }
+  }
+
+  async function handleLockWallet() {
+    try {
+      const res = await fetch('/api/wallet/lock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const data = await res.json().catch(() => null)
+      setWalletActionStatus(data?.message || (data?.ok ? 'Wallet locked.' : `Wallet lock unavailable (${res.status})`))
+    } catch (error) {
+      setWalletActionStatus(error?.message || 'Wallet lock unavailable')
+    }
+  }
+
+  async function handleBroadcastSend() {
+    try {
+      const res = await fetch('/api/wallet/send/broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...sendForm, confirm: true }),
+      })
+      const data = await res.json().catch(() => null)
+      setBroadcastStatus(data?.message || (data?.ok ? `Broadcast sent: ${data.txid}` : `Broadcast failed (${res.status})`))
+      if (data?.ok) {
+        setSendPreviewData(null)
+        setSendForm({ address: '', amount: '', memo: '' })
+      }
+    } catch (error) {
+      setBroadcastStatus(error?.message || 'Broadcast failed')
     }
   }
 
@@ -530,27 +578,30 @@ export default function App() {
 
   const sendPanel = (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr', gap: 16 }}>
-      <Card title="Send TRI" subtitle="Real preview and validation now, still no broadcast button" tone="warning">
+      <Card title="Send TRI" subtitle="Full send flow with preview, readiness checks, and live broadcast when enabled" tone="warning">
         <div style={{ display: 'grid', gap: 12 }}>
           <Field label="Destination address" disabled={false} value={sendForm.address} onChange={(e) => setSendForm((prev) => ({ ...prev, address: e.target.value }))} placeholder="TRI destination address" />
           <Field label="Amount" type="number" disabled={false} value={sendForm.amount} onChange={(e) => setSendForm((prev) => ({ ...prev, amount: e.target.value }))} placeholder="0.00 TRI" />
           <Field label="Memo / label" disabled={false} value={sendForm.memo} onChange={(e) => setSendForm((prev) => ({ ...prev, memo: e.target.value }))} placeholder="Optional note" />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <ActionButton onClick={handlePreviewSend}>Preview send</ActionButton>
-            <ActionButton tone="warning" disabled>Broadcast still gated</ActionButton>
+            <ActionButton tone="ok" onClick={handleBroadcastSend} disabled={!sendPreviewData?.canBroadcast}>Broadcast send</ActionButton>
           </div>
           {sendPreviewStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{sendPreviewStatus}</div> : null}
+          {broadcastStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{broadcastStatus}</div> : null}
         </div>
       </Card>
 
-      <Card title="Send preview" subtitle="Validation and fee estimate">
+      <Card title="Send preview" subtitle="Validation, wallet readiness, and fee estimate">
         <div style={{ display: 'grid', gap: 8 }}>
           <InfoRow label="Address valid" value={sendPreviewData ? (sendPreviewData.validAddress ? 'yes' : 'no') : '—'} />
           <InfoRow label="Spendable balance" value={sendPreviewData ? formatAmount(sendPreviewData.spendableBalance) : '—'} />
           <InfoRow label="Estimated fee" value={sendPreviewData ? formatAmount(sendPreviewData.estimatedFee) : '—'} />
           <InfoRow label="Estimated total" value={sendPreviewData ? formatAmount(sendPreviewData.estimatedTotal) : '—'} />
+          <InfoRow label="Wallet locked" value={sendPreviewData ? (sendPreviewData.walletLocked ? 'yes' : 'no') : '—'} />
           <InfoRow label="Exceeds balance" value={sendPreviewData ? (sendPreviewData.wouldExceedBalance ? 'yes' : 'no') : '—'} />
-          <InfoRow label="Can broadcast" value={sendPreviewData ? (sendPreviewData.canBroadcast ? 'yes, if explicitly allowed' : 'not yet') : '—'} />
+          <InfoRow label="Can broadcast" value={sendPreviewData ? (sendPreviewData.canBroadcast ? 'yes' : 'not yet') : '—'} />
+          <InfoRow label="Blocked reasons" value={sendPreviewData?.blockedReasons?.length ? sendPreviewData.blockedReasons.join(', ') : 'none'} />
         </div>
       </Card>
     </div>
@@ -641,9 +692,16 @@ export default function App() {
         </div>
       </Card>
 
-      <Card title="Why this matters" subtitle="Recovery credibility before dangerous wallet actions" tone="accent">
-        <div style={{ color: '#c6cfda', lineHeight: 1.6 }}>
-          Backup/export is now wired to a real file-copy path when configured, but it still needs restore verification before it should be treated as enough for dangerous wallet actions.
+      <Card title="Wallet control" subtitle="Lock/unlock and backup posture for the live container wallet" tone="accent">
+        <div style={{ display: 'grid', gap: 10 }}>
+          <InfoRow label="Encrypted" value={capabilities?.wallet?.encrypted ? 'yes' : 'no / unknown'} />
+          <InfoRow label="Locked" value={capabilities?.wallet?.locked ? 'yes' : 'no'} />
+          <InfoRow label="Unlock available" value={contracts?.unlock?.available ? 'yes' : 'no'} />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <ActionButton onClick={handleUnlockWallet} disabled={!contracts?.unlock?.ready}>Unlock wallet</ActionButton>
+            <ActionButton tone="warning" onClick={handleLockWallet}>Lock wallet</ActionButton>
+          </div>
+          {walletActionStatus ? <div style={{ color: '#c6cfda', lineHeight: 1.6 }}>{walletActionStatus}</div> : null}
         </div>
       </Card>
     </div>
@@ -664,10 +722,11 @@ export default function App() {
       <Card title="Action contracts" subtitle="Backend is now carrying real state and guarded capabilities">
         <div style={{ display: 'grid', gap: 8 }}>
           <InfoRow label="Send preview" value={featureFlags.sendPreview ? 'live' : 'off'} />
+          <InfoRow label="Live send" value={contracts?.send?.available ? (contracts?.send?.ready ? 'live' : 'guarded') : 'off'} />
           <InfoRow label="Labels" value={contracts?.labels?.available ? 'live' : 'off'} />
-          <InfoRow label="Address generation" value={contracts?.addressGeneration?.available ? 'guarded live' : 'blocked'} />
-          <InfoRow label="Backup export" value={contracts?.backup?.available ? 'guarded live' : 'not configured'} />
-          <InfoRow label="wallet.dat" value="still protected" />
+          <InfoRow label="Address generation" value={contracts?.addressGeneration?.available ? (contracts?.addressGeneration?.ready ? 'live' : 'guarded') : 'blocked'} />
+          <InfoRow label="Backup export" value={contracts?.backup?.available ? (contracts?.backup?.ready ? 'live' : 'guarded') : 'not configured'} />
+          <InfoRow label="Wallet lock/unlock" value={contracts?.unlock?.available ? (contracts?.unlock?.ready ? 'live' : 'guarded') : 'off'} />
         </div>
       </Card>
     </div>
@@ -693,7 +752,7 @@ export default function App() {
                 <img src={triLogo} alt="Triangles logo" style={{ height: 42, width: 'auto', display: 'block', filter: 'drop-shadow(0 8px 18px rgba(0,0,0,.35))' }} />
                 <div>
                   <div style={{ fontSize: 22, fontWeight: 700 }}>TRIdock Web Wallet</div>
-                  <div style={{ color: '#aeb7c4', marginTop: 4 }}>Moving from read-only shell toward a functioning guarded wallet node</div>
+                  <div style={{ color: '#aeb7c4', marginTop: 4 }}>A full Docker-based Triangles wallet with live controls, clear readiness, and real node visibility</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

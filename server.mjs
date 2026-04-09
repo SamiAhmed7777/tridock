@@ -25,6 +25,11 @@ const walletExportAllowlist = (process.env.TRI_WALLET_EXPORT_ALLOWLIST || '')
   .split(':')
   .map((s) => s.trim())
   .filter(Boolean)
+const walletPassphrase = process.env.TRI_WALLET_PASSPHRASE || ''
+const requireUnlockForSend = process.env.TRI_REQUIRE_UNLOCK_FOR_SEND !== '0'
+const allowSendBroadcast = process.env.TRI_ALLOW_SEND_BROADCAST === '1'
+const allowWalletUnlock = process.env.TRI_ALLOW_WALLET_UNLOCK === '1'
+const unlockTimeoutSeconds = Number(process.env.TRI_WALLET_UNLOCK_TIMEOUT || '180')
 
 const readAllowedMethods = new Set([
   'getblockcount',
@@ -37,6 +42,7 @@ const readAllowedMethods = new Set([
   'getpeerinfo',
   'getwalletinfo',
   'getwalletstatus',
+  'validateaddress',
 ])
 
 async function ensureDataDirs() {
@@ -133,6 +139,79 @@ function isAllowedExportSource(sourcePath) {
   return walletExportAllowlist.some((base) => resolved.startsWith(path.resolve(base)))
 }
 
+function toPositiveInteger(value, fallback) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
+
+async function readWalletStatusInfo() {
+  const [walletInfo, walletStatus] = await Promise.all([
+    rpcOptional('getwalletinfo'),
+    rpcOptional('getwalletstatus'),
+  ])
+
+  const unlockedUntil = walletInfo?.unlocked_until ?? walletStatus?.unlocked_until ?? null
+  const encrypted = Boolean(
+    walletInfo?.unlocked_until !== undefined ||
+    walletStatus?.encrypted ||
+    walletStatus?.locked !== undefined
+  )
+  const locked = encrypted ? Number(unlockedUntil || 0) <= 0 : false
+
+  return {
+    walletInfo,
+    walletStatus,
+    encrypted,
+    locked,
+    unlockedUntil,
+  }
+}
+
+async function buildCapabilities(nodeState) {
+  const walletMeta = await readWalletStatusInfo()
+  const exportReady = Boolean(walletExportPath) && isAllowedExportSource(walletExportPath)
+  const nodeReady = !['bootstrapping', 'bootstrap', 'reseed'].includes(String(nodeState?.status || '').toLowerCase())
+  const canonicalMismatch = String(nodeState?.canonicalStatus || '').toLowerCase().includes('mismatch')
+  const sendBlockedReasons = []
+
+  if (!enableWriteOps) sendBlockedReasons.push('write-ops-disabled')
+  if (!allowSendBroadcast) sendBlockedReasons.push('send-broadcast-disabled')
+  if (!nodeReady) sendBlockedReasons.push('node-not-ready')
+  if (canonicalMismatch) sendBlockedReasons.push('canonical-mismatch')
+  if (requireUnlockForSend && walletMeta.encrypted && walletMeta.locked) sendBlockedReasons.push('wallet-locked')
+
+  return {
+    wallet: {
+      encrypted: walletMeta.encrypted,
+      locked: walletMeta.locked,
+      unlockedUntil: walletMeta.unlockedUntil,
+    },
+    send: {
+      available: enableWriteOps && allowSendBroadcast,
+      ready: sendBlockedReasons.length === 0,
+      blockedReasons: sendBlockedReasons,
+      requiresUnlock: requireUnlockForSend && walletMeta.encrypted,
+      requiresConfirmation: true,
+    },
+    backup: {
+      available: Boolean(walletExportPath),
+      ready: exportReady,
+      blockedReasons: exportReady ? [] : ['backup-export-not-configured-or-not-allowlisted'],
+    },
+    addressGeneration: {
+      available: enableWriteOps,
+      ready: enableWriteOps && nodeReady,
+      blockedReasons: enableWriteOps && nodeReady ? [] : ['write-ops-disabled-or-node-not-ready'],
+    },
+    unlock: {
+      available: allowWalletUnlock,
+      ready: allowWalletUnlock && Boolean(walletPassphrase),
+      blockedReasons: allowWalletUnlock ? (walletPassphrase ? [] : ['wallet-passphrase-not-configured']) : ['wallet-unlock-disabled'],
+      timeoutSeconds: toPositiveInteger(unlockTimeoutSeconds, 180),
+    },
+  }
+}
+
 app.use(express.json())
 
 app.get('/api/health', async (_req, res) => {
@@ -150,15 +229,19 @@ app.get('/api/wallet/labels', async (_req, res) => {
 
 app.get('/api/wallet/contracts', async (_req, res) => {
   const nodeState = await readNodeState()
+  const capabilities = await buildCapabilities(nodeState)
   res.json({
     ok: true,
     nodeState,
+    wallet: capabilities.wallet,
     send: {
-      available: enableWriteOps,
-      reason: enableWriteOps ? 'Guarded send preview is enabled' : 'Guarded wallet writes not enabled',
+      available: capabilities.send.available,
+      ready: capabilities.send.ready,
+      blockedReasons: capabilities.send.blockedReasons,
+      reason: capabilities.send.available ? 'Live send pipeline is enabled when readiness checks pass' : 'Send broadcast is not enabled for this instance',
       requiredChecks: [
-        'explicit-user-approval',
-        'fresh-backup-verified',
+        'node-ready',
+        'canonical-not-mismatched',
         'wallet-unlock-policy',
         'transaction-preview',
         'broadcast-confirmation',
@@ -166,8 +249,10 @@ app.get('/api/wallet/contracts', async (_req, res) => {
       fields: ['address', 'amount', 'memo'],
     },
     backup: {
-      available: Boolean(walletExportPath),
-      reason: walletExportPath ? 'Backup export path configured' : 'Backup/export path not configured',
+      available: capabilities.backup.available,
+      ready: capabilities.backup.ready,
+      blockedReasons: capabilities.backup.blockedReasons,
+      reason: capabilities.backup.available ? 'Backup export path configured' : 'Backup/export path not configured',
       requiredChecks: ['safe-target-path', 'wallet-safe-export-strategy', 'restore-verification'],
       actions: ['create-backup', 'export-wallet-package', 'verify-restore-package'],
     },
@@ -177,40 +262,54 @@ app.get('/api/wallet/contracts', async (_req, res) => {
       fields: ['address', 'label', 'note'],
     },
     addressGeneration: {
-      available: enableWriteOps,
-      reason: enableWriteOps ? 'Guarded address generation enabled' : 'Write ops disabled',
-      requiredChecks: ['explicit-user-approval', 'wallet-write-enabled'],
+      available: capabilities.addressGeneration.available,
+      ready: capabilities.addressGeneration.ready,
+      blockedReasons: capabilities.addressGeneration.blockedReasons,
+      reason: capabilities.addressGeneration.available ? 'Address generation is enabled when the node is ready' : 'Write ops disabled',
+      requiredChecks: ['wallet-write-enabled', 'node-ready'],
+    },
+    unlock: {
+      available: capabilities.unlock.available,
+      ready: capabilities.unlock.ready,
+      blockedReasons: capabilities.unlock.blockedReasons,
+      timeoutSeconds: capabilities.unlock.timeoutSeconds,
     },
   })
 })
 
 app.post('/api/wallet/send/preview', async (req, res) => {
   const nodeState = await readNodeState()
+  const capabilities = await buildCapabilities(nodeState)
   const { address = '', amount = '', memo = '' } = req.body || {}
 
   if (!address || !String(address).trim()) {
-    return res.status(400).json({ ok: false, code: 'ADDRESS_REQUIRED', message: 'Destination address is required.', nodeState })
+    return res.status(400).json({ ok: false, code: 'ADDRESS_REQUIRED', message: 'Destination address is required.', nodeState, capabilities })
   }
 
   const numericAmount = Number(amount)
   if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-    return res.status(400).json({ ok: false, code: 'AMOUNT_INVALID', message: 'Amount must be a positive number.', nodeState })
+    return res.status(400).json({ ok: false, code: 'AMOUNT_INVALID', message: 'Amount must be a positive number.', nodeState, capabilities })
   }
 
   try {
-    const [walletInfo, validation] = await Promise.all([
-      rpcOptional('getwalletinfo'),
+    const [walletMeta, validation] = await Promise.all([
+      readWalletStatusInfo(),
       rpcOptional('validateaddress', [String(address).trim()]),
     ])
 
-    const balance = Number(walletInfo?.balance ?? 0)
+    const balance = Number(walletMeta.walletInfo?.balance ?? 0)
     const feeEstimate = Number((numericAmount * 0.001).toFixed(8))
     const total = Number((numericAmount + feeEstimate).toFixed(8))
     const valid = validation?.isvalid !== false
+    const blockedReasons = [...capabilities.send.blockedReasons]
+
+    if (!valid) blockedReasons.push('invalid-address')
+    if (total > balance) blockedReasons.push('insufficient-balance')
 
     res.json({
       ok: true,
       nodeState,
+      capabilities,
       preview: {
         address: String(address).trim(),
         amount: numericAmount,
@@ -220,17 +319,20 @@ app.post('/api/wallet/send/preview', async (req, res) => {
         estimatedFee: feeEstimate,
         estimatedTotal: total,
         wouldExceedBalance: total > balance,
-        canBroadcast: enableWriteOps && valid && total <= balance,
+        walletEncrypted: capabilities.wallet.encrypted,
+        walletLocked: capabilities.wallet.locked,
+        canBroadcast: blockedReasons.length === 0,
+        blockedReasons,
       },
       requiredChecks: [
-        'explicit-user-approval',
-        'fresh-backup-verified',
+        'node-ready',
+        'canonical-not-mismatched',
         'wallet-unlock-policy',
         'broadcast-confirmation',
       ],
     })
   } catch (error) {
-    res.status(500).json({ ok: false, code: 'SEND_PREVIEW_FAILED', message: error.message, nodeState })
+    res.status(500).json({ ok: false, code: 'SEND_PREVIEW_FAILED', message: error.message, nodeState, capabilities })
   }
 })
 
@@ -310,11 +412,129 @@ app.post('/api/wallet/labels/save', async (req, res) => {
   res.json({ ok: true, nodeState, address: String(address).trim(), entry: labels[String(address).trim()] })
 })
 
+app.post('/api/wallet/unlock', async (req, res) => {
+  const nodeState = await readNodeState()
+  const capabilities = await buildCapabilities(nodeState)
+  const timeout = toPositiveInteger(req.body?.timeoutSeconds, capabilities.unlock.timeoutSeconds)
+
+  if (!capabilities.unlock.available) {
+    return res.status(403).json({ ok: false, code: 'WALLET_UNLOCK_DISABLED', message: 'Wallet unlock is disabled for this instance.', nodeState, capabilities })
+  }
+  if (!walletPassphrase) {
+    return res.status(500).json({ ok: false, code: 'WALLET_PASSPHRASE_NOT_CONFIGURED', message: 'Server-side wallet passphrase is not configured.', nodeState, capabilities })
+  }
+
+  try {
+    await rpcCall(rpcUrl, rpcUser, rpcPassword, 'walletpassphrase', [walletPassphrase, timeout])
+    const walletMeta = await readWalletStatusInfo()
+    res.json({
+      ok: true,
+      nodeState,
+      wallet: {
+        encrypted: walletMeta.encrypted,
+        locked: walletMeta.locked,
+        unlockedUntil: walletMeta.unlockedUntil,
+      },
+      message: `Wallet unlocked for ${timeout} seconds.`,
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, code: 'WALLET_UNLOCK_FAILED', message: error.message, nodeState, capabilities })
+  }
+})
+
+app.post('/api/wallet/lock', async (_req, res) => {
+  const nodeState = await readNodeState()
+  try {
+    await rpcCall(rpcUrl, rpcUser, rpcPassword, 'walletlock')
+    const walletMeta = await readWalletStatusInfo()
+    res.json({
+      ok: true,
+      nodeState,
+      wallet: {
+        encrypted: walletMeta.encrypted,
+        locked: walletMeta.locked,
+        unlockedUntil: walletMeta.unlockedUntil,
+      },
+      message: 'Wallet locked.',
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, code: 'WALLET_LOCK_FAILED', message: error.message, nodeState })
+  }
+})
+
+app.post('/api/wallet/send/broadcast', async (req, res) => {
+  const nodeState = await readNodeState()
+  const capabilities = await buildCapabilities(nodeState)
+  const { address = '', amount = '', memo = '', confirm = false } = req.body || {}
+
+  if (!confirm) {
+    return res.status(400).json({ ok: false, code: 'CONFIRMATION_REQUIRED', message: 'Explicit confirmation is required before broadcasting.', nodeState, capabilities })
+  }
+
+  const numericAmount = Number(amount)
+  if (!address || !String(address).trim()) {
+    return res.status(400).json({ ok: false, code: 'ADDRESS_REQUIRED', message: 'Destination address is required.', nodeState, capabilities })
+  }
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    return res.status(400).json({ ok: false, code: 'AMOUNT_INVALID', message: 'Amount must be a positive number.', nodeState, capabilities })
+  }
+
+  const previewValidation = await rpcOptional('validateaddress', [String(address).trim()])
+  const walletMeta = await readWalletStatusInfo()
+  const balance = Number(walletMeta.walletInfo?.balance ?? 0)
+  const feeEstimate = Number((numericAmount * 0.001).toFixed(8))
+  const total = Number((numericAmount + feeEstimate).toFixed(8))
+  const blockedReasons = [...capabilities.send.blockedReasons]
+
+  if (previewValidation?.isvalid === false) blockedReasons.push('invalid-address')
+  if (total > balance) blockedReasons.push('insufficient-balance')
+
+  if (blockedReasons.length > 0) {
+    return res.status(409).json({
+      ok: false,
+      code: 'SEND_NOT_READY',
+      message: 'This wallet instance is not ready to broadcast the transaction.',
+      nodeState,
+      capabilities,
+      preview: {
+        address: String(address).trim(),
+        amount: numericAmount,
+        memo: String(memo || ''),
+        estimatedFee: feeEstimate,
+        estimatedTotal: total,
+        spendableBalance: balance,
+        blockedReasons,
+      },
+    })
+  }
+
+  try {
+    const txid = await rpcCall(rpcUrl, rpcUser, rpcPassword, 'sendtoaddress', [String(address).trim(), numericAmount, String(memo || '')])
+    res.json({
+      ok: true,
+      nodeState,
+      txid,
+      sent: {
+        address: String(address).trim(),
+        amount: numericAmount,
+        memo: String(memo || ''),
+        estimatedFee: feeEstimate,
+        estimatedTotal: total,
+      },
+      message: 'Transaction broadcast submitted.',
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, code: 'SEND_BROADCAST_FAILED', message: error.message, nodeState, capabilities })
+  }
+})
+
 app.get('/api/wallet/features', async (_req, res) => {
   const nodeState = await readNodeState()
+  const capabilities = await buildCapabilities(nodeState)
   res.json({
-    mode: enableWriteOps ? 'guarded-write' : 'read-only',
+    mode: enableWriteOps ? 'live-wallet' : 'inspection-only',
     nodeState,
+    capabilities,
     features: [
       { key: 'overview', label: 'Overview', status: 'live' },
       { key: 'receive', label: 'Receive addresses', status: 'live-when-rpc-ready' },
@@ -323,10 +543,10 @@ app.get('/api/wallet/features', async (_req, res) => {
       { key: 'peers', label: 'Peer diagnostics', status: 'live-when-rpc-ready' },
       { key: 'sendPreview', label: 'Send preview', status: 'live' },
       { key: 'labels', label: 'Address labels', status: 'live' },
-      { key: 'addressGeneration', label: 'Generate address', status: enableWriteOps ? 'guarded-live' : 'blocked' },
-      { key: 'backupExport', label: 'Backup/export', status: walletExportPath ? 'guarded-live' : 'planned' },
-      { key: 'send', label: 'Send TRI', status: enableWriteOps ? 'guarded-next' : 'blocked' },
-      { key: 'lockUnlock', label: 'Wallet lock/unlock', status: 'planned' },
+      { key: 'addressGeneration', label: 'Generate address', status: capabilities.addressGeneration.ready ? 'live' : 'guarded' },
+      { key: 'backupExport', label: 'Backup/export', status: capabilities.backup.ready ? 'live' : 'guarded' },
+      { key: 'send', label: 'Send TRI', status: capabilities.send.ready ? 'live' : 'guarded' },
+      { key: 'lockUnlock', label: 'Wallet lock/unlock', status: capabilities.unlock.ready ? 'live' : 'guarded' },
     ],
   })
 })
@@ -335,7 +555,7 @@ app.get('/api/wallet/summary', async (_req, res) => {
   const nodeState = await readNodeState()
 
   try {
-    const [info, staking, txs, received, blockCount, bestBlock, connections, walletInfo, walletStatus, peerInfo, labels] = await Promise.all([
+    const [info, staking, txs, received, blockCount, bestBlock, connections, walletInfo, walletStatus, peerInfo, labels, capabilities] = await Promise.all([
       rpcCall(rpcUrl, rpcUser, rpcPassword, 'getinfo'),
       rpcOptional('getstakinginfo'),
       rpcOptional('listtransactions', ['*', 50]),
@@ -347,6 +567,7 @@ app.get('/api/wallet/summary', async (_req, res) => {
       rpcOptional('getwalletstatus'),
       rpcOptional('getpeerinfo'),
       readLabels(),
+      buildCapabilities(nodeState),
     ])
 
     let canonical = { enabled: false }
@@ -409,6 +630,7 @@ app.get('/api/wallet/summary', async (_req, res) => {
       transactions: Array.isArray(txs) ? txs : [],
       received: receivedList,
       labels,
+      capabilities,
       featureFlags: {
         overview: true,
         receive: true,
@@ -417,11 +639,11 @@ app.get('/api/wallet/summary', async (_req, res) => {
         peers: true,
         canonical: Boolean(canonicalUrl),
         sendPreview: true,
-        send: false,
+        send: capabilities.send.available,
         addressBook: true,
-        backupExport: Boolean(walletExportPath),
-        addressGeneration: enableWriteOps,
-        lockUnlock: false,
+        backupExport: capabilities.backup.available,
+        addressGeneration: capabilities.addressGeneration.available,
+        lockUnlock: capabilities.unlock.available,
       },
     })
   } catch (error) {
@@ -456,6 +678,7 @@ app.get('/api/wallet/summary', async (_req, res) => {
       transactions: [],
       received: [],
       labels: await readLabels(),
+      capabilities: await buildCapabilities(nodeState),
       featureFlags: {
         overview: true,
         receive: false,
@@ -464,11 +687,11 @@ app.get('/api/wallet/summary', async (_req, res) => {
         peers: false,
         canonical: Boolean(canonicalUrl),
         sendPreview: false,
-        send: false,
+        send: allowSendBroadcast,
         addressBook: true,
         backupExport: Boolean(walletExportPath),
         addressGeneration: enableWriteOps,
-        lockUnlock: false,
+        lockUnlock: allowWalletUnlock,
       },
     })
   }
