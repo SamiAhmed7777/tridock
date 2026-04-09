@@ -457,6 +457,82 @@ app.post('/api/wallet/address/new', async (req, res) => {
   }
 })
 
+app.get('/api/wallet/backups', async (_req, res) => {
+  // List available backup files from the exports directory
+  try {
+    await ensureDataDirs()
+    let files = []
+    try {
+      const entries = await fs.readdir(exportsDir)
+      files = await Promise.all(
+        entries
+          .filter((f) => f.endsWith('.dat') || f.endsWith('.zip') || f.endsWith('.tar.gz'))
+          .map(async (f) => {
+            const stat = await fs.stat(path.join(exportsDir, f))
+            return {
+              name: f,
+              path: path.join(exportsDir, f),
+              size: stat.size,
+              modified: stat.mtime.toISOString(),
+              type: 'export',
+            }
+          })
+      )
+    } catch { /* exports dir empty or missing */ }
+
+    // Also scan the /tri/backups directory if it exists and is mounted
+    const triBackupsDir = path.resolve('/tri/backups')
+    if (triBackupsDir !== path.resolve('/')) {
+      try {
+        const entries = await fs.readdir(triBackupsDir)
+        const triFiles = await Promise.all(
+          entries
+            .filter((f) => f.endsWith('.dat') || f.startsWith('wallet-'))
+            .map(async (f) => {
+              const fp = path.join(triBackupsDir, f)
+              const stat = await fs.stat(fp)
+              return {
+                name: f,
+                path: fp,
+                size: stat.size,
+                modified: stat.mtime.toISOString(),
+                type: 'wallet-dat',
+              }
+            })
+        )
+        // Merge, avoid duplicates by name
+        const existing = new Set(files.map((f) => f.name))
+        for (const tf of triFiles) {
+          if (!existing.has(tf.name)) files.push(tf)
+        }
+      } catch { /* tri/backups not mounted or empty */ }
+    }
+
+    files.sort((a, b) => new Date(b.modified) - new Date(a.modified))
+    res.json({ ok: true, files })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.get('/api/wallet/backups/:filename', async (req, res) => {
+  const { filename } = req.params || {}
+  if (!filename || filename.includes('..') || filename.includes('/')) {
+    return res.status(400).json({ error: 'Invalid filename' })
+  }
+  const filePath = path.join(exportsDir, filename)
+  // Security: ensure the resolved path is within exportsDir
+  if (!path.resolve(filePath).startsWith(path.resolve(exportsDir))) {
+    return res.status(403).json({ error: 'Path not allowed' })
+  }
+  try {
+    await fs.access(filePath)
+    res.download(filePath, filename)
+  } catch {
+    res.status(404).json({ error: 'File not found' })
+  }
+})
+
 app.post('/api/wallet/backup/export', async (req, res) => {
   const nodeState = await readNodeState()
   const { requestedName = 'tri-wallet-backup' } = req.body || {}

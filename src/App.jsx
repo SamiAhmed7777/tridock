@@ -264,6 +264,7 @@ export default function App() {
   const [showAddNode, setShowAddNode] = useState(false)
   const [addNodeForm, setAddNodeForm] = useState({ name: '', url: '', user: '', password: '' })
   const [addNodeStatus, setAddNodeStatus] = useState('')
+  const [backups, setBackups] = useState([])
 
   // Tick wallet unlock countdown every second; when it hits 0, refresh capabilities
   const countdownRef = useRef(null)
@@ -322,6 +323,9 @@ export default function App() {
         const labelsData = await labelsRes.json().catch(() => null)
         const nodesData = await nodesRes.json().catch(() => null)
         const systemData = await systemRes.json().catch(() => null)
+
+        // Load backups separately so failures don't block main UI
+        loadBackups()
 
         if (cancelled) return
 
@@ -478,6 +482,14 @@ export default function App() {
     } catch (err) {
       setAddNodeStatus(err?.message || 'Failed to add node')
     }
+  }
+
+  async function loadBackups() {
+    try {
+      const res = await fetch('/api/wallet/backups')
+      const data = await res.json()
+      if (data?.files) setBackups(data.files)
+    } catch { /* ignore backup list errors */ }
   }
 
   async function handleSaveLabel(address) {
@@ -860,7 +872,6 @@ export default function App() {
           <InfoRow label="Write ops enabled" value={health?.writeOpsEnabled ? 'yes' : 'no'} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <ActionButton onClick={handleBackupAction}>Create backup export</ActionButton>
-            <ActionButton disabled>Verify restore package</ActionButton>
           </div>
           {backupStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{backupStatus}</div> : null}
           {backupData ? (
@@ -869,9 +880,39 @@ export default function App() {
               <InfoRow label="Bytes" value={String(backupData.bytes)} />
               <InfoRow label="SHA256" value={formatHash(backupData.sha256)} mono />
               <InfoRow label="Created" value={backupData.createdAt} />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <ActionButton tone="ok" onClick={() => window.open(`/api/wallet/backups/${encodeURIComponent(backupData.filename)}`, '_blank')}>
+                  Download
+                </ActionButton>
+              </div>
             </div>
           ) : null}
         </div>
+      </Card>
+
+      <Card title="Available backups" subtitle="Download any backup to keep a local copy">
+        {backups.length === 0 ? (
+          <div style={{ color: '#aeb7c4', fontSize: 13 }}>No backups yet. Create one to get started.</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {backups.map((b) => (
+              <div key={b.name} style={{ padding: '8px 10px', borderRadius: 8, background: '#1e222b', border: '1px solid #343942', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontFamily: 'monospace', color: '#cdd6e2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</div>
+                  <div style={{ fontSize: 11, color: '#aeb7c4', marginTop: 2 }}>
+                    {b.type === 'wallet-dat' ? 'wallet-dat · ' : 'export · '}{Math.round(b.size / 1024)}KB · {new Date(b.modified).toLocaleString()}
+                  </div>
+                </div>
+                <button
+                  onClick={() => window.open(`/api/wallet/backups/${encodeURIComponent(b.name)}`, '_blank')}
+                  style={{ background: '#2a3040', color: '#8df0b1', border: '1px solid #404652', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}
+                >
+                  ↓
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <Card title="Wallet control" subtitle="Lock/unlock and backup posture for the live container wallet" tone="accent">
