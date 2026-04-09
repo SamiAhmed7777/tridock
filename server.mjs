@@ -58,6 +58,8 @@ const allowedMethods = new Set([
   'getinfo',
   'listtransactions',
   'listreceivedbyaddress',
+  'getpeerinfo',
+  'getwalletinfo',
 ])
 
 async function rpcCall(url, user, password, method, params = []) {
@@ -98,6 +100,25 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/node/state', async (_req, res) => {
   res.json(await readNodeState())
+})
+
+app.get('/api/wallet/features', async (_req, res) => {
+  const nodeState = await readNodeState()
+  res.json({
+    mode: 'read-only',
+    nodeState,
+    features: [
+      { key: 'overview', label: 'Overview', status: 'live' },
+      { key: 'receive', label: 'Receive addresses', status: 'live-when-rpc-ready' },
+      { key: 'transactions', label: 'Transactions', status: 'live-when-rpc-ready' },
+      { key: 'staking', label: 'Staking status', status: 'live-when-rpc-ready' },
+      { key: 'peers', label: 'Peer diagnostics', status: 'live-when-rpc-ready' },
+      { key: 'send', label: 'Send TRI', status: 'blocked' },
+      { key: 'addressBook', label: 'Address book actions', status: 'planned' },
+      { key: 'backupExport', label: 'Backup/export', status: 'planned' },
+      { key: 'lockUnlock', label: 'Wallet lock/unlock', status: 'planned' },
+    ],
+  })
 })
 
 app.get('/api/wallet/summary', async (_req, res) => {
