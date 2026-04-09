@@ -614,6 +614,25 @@ export default function App() {
           ) : null}
           {walletActionStatus ? <div style={{ marginTop: 8, fontSize: 12, color: '#aeb7c4' }}>{walletActionStatus}</div> : null}
         </Card>
+        <Card title="Staking" tone={summary?.staking?.staking ? 'ok' : summary?.staking?.enabled ? 'warning' : 'muted'}>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>
+            {summary?.staking?.staking ? 'Active' : summary?.staking?.enabled ? 'Idle' : 'Off'}
+          </div>
+          {summary?.staking?.staking ? (
+            <div style={{ color: '#8df0b1', marginTop: 8 }}>
+              Earning on {formatAmount(summary?.staking?.weight)} of {formatAmount(summary?.staking?.netstakeweight)} weight
+            </div>
+          ) : null}
+          {summary?.staking?.errors ? (
+            <div style={{ color: '#ff7d7d', marginTop: 4, fontSize: 12 }}>Errors: {summary.staking.errors}</div>
+          ) : null}
+          <div style={{ color: '#aeb7c4', marginTop: 8 }}>
+            {summary?.staking?.expectedtime && Number(summary.staking.expectedtime) > 0
+              ? `Next stake in ~${Math.round(Number(summary.staking.expectedtime) / 60)}min`
+              : summary?.staking?.staking ? 'Staking now'
+              : '—'}
+          </div>
+        </Card>
       </div>
 
       <Card title="Current node state" subtitle="The wallet stays useful even while the node is bootstrapping or warming up" tone="accent">
