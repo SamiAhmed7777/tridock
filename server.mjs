@@ -1,7 +1,6 @@
 import express from 'express'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-
 import fs from 'node:fs/promises'
 
 async function readStateFile(name) {
@@ -84,10 +83,12 @@ async function rpcCall(url, user, password, method, params = []) {
   return payload.result
 }
 
-function pickBalance(info, staking) {
-  const balance = typeof info?.balance === 'number' ? info.balance : 0
-  const stake = typeof staking?.weight === 'number' ? staking.weight : null
-  return { balance, stakeWeight: stake }
+async function rpcOptional(method, params = []) {
+  try {
+    return await rpcCall(rpcUrl, rpcUser, rpcPassword, method, params)
+  } catch {
+    return null
+  }
 }
 
 app.get('/api/health', async (_req, res) => {
@@ -103,14 +104,28 @@ app.get('/api/wallet/summary', async (_req, res) => {
   const nodeState = await readNodeState()
 
   try {
-    const [info, staking, txs, received, blockCount, bestBlock, connections] = await Promise.all([
+    const [
+      info,
+      staking,
+      txs,
+      received,
+      blockCount,
+      bestBlock,
+      connections,
+      walletInfo,
+      walletStatus,
+      peerInfo,
+    ] = await Promise.all([
       rpcCall(rpcUrl, rpcUser, rpcPassword, 'getinfo'),
-      rpcCall(rpcUrl, rpcUser, rpcPassword, 'getstakinginfo'),
-      rpcCall(rpcUrl, rpcUser, rpcPassword, 'listtransactions', ['*', 10]),
-      rpcCall(rpcUrl, rpcUser, rpcPassword, 'listreceivedbyaddress', [0, true]),
+      rpcOptional('getstakinginfo'),
+      rpcOptional('listtransactions', ['*', 25]),
+      rpcOptional('listreceivedbyaddress', [0, true]),
       rpcCall(rpcUrl, rpcUser, rpcPassword, 'getblockcount'),
       rpcCall(rpcUrl, rpcUser, rpcPassword, 'getbestblockhash'),
       rpcCall(rpcUrl, rpcUser, rpcPassword, 'getconnectioncount'),
+      rpcOptional('getwalletinfo'),
+      rpcOptional('getwalletstatus'),
+      rpcOptional('getpeerinfo'),
     ])
 
     let canonical = { enabled: false }
@@ -127,7 +142,7 @@ app.get('/api/wallet/summary', async (_req, res) => {
       }
     }
 
-    const balances = pickBalance(info, staking)
+    const balance = typeof info?.balance === 'number' ? info.balance : null
     res.json({
       ok: true,
       rpcReady: true,
@@ -136,8 +151,8 @@ app.get('/api/wallet/summary', async (_req, res) => {
       network: info?.testnet ? 'testnet' : 'mainnet',
       version: info?.version ?? null,
       protocolversion: info?.protocolversion ?? null,
-      walletversion: info?.walletversion ?? null,
-      balance: balances.balance,
+      walletversion: info?.walletversion ?? walletInfo?.walletversion ?? null,
+      balance,
       stake: info?.stake ?? null,
       newmint: info?.newmint ?? null,
       blocks: blockCount,
@@ -152,8 +167,31 @@ app.get('/api/wallet/summary', async (_req, res) => {
         expectedtime: staking?.expectedtime ?? null,
       },
       canonical,
+      walletInfo: walletInfo || null,
+      walletStatus: walletStatus || null,
+      peerCount: Array.isArray(peerInfo) ? peerInfo.length : connections,
+      peers: Array.isArray(peerInfo)
+        ? peerInfo.slice(0, 12).map((peer) => ({
+            addr: peer.addr,
+            subver: peer.subver,
+            startingheight: peer.startingheight,
+            inbound: peer.inbound,
+          }))
+        : [],
       transactions: Array.isArray(txs) ? txs : [],
       received: Array.isArray(received) ? received : [],
+      featureFlags: {
+        overview: true,
+        receive: true,
+        transactions: true,
+        staking: true,
+        peers: true,
+        canonical: Boolean(canonicalUrl),
+        send: false,
+        addressBook: false,
+        backupExport: false,
+        lockUnlock: false,
+      },
     })
   } catch (error) {
     res.json({
@@ -180,8 +218,24 @@ app.get('/api/wallet/summary', async (_req, res) => {
         expectedtime: null,
       },
       canonical: { enabled: Boolean(canonicalUrl) },
+      walletInfo: null,
+      walletStatus: null,
+      peerCount: 0,
+      peers: [],
       transactions: [],
       received: [],
+      featureFlags: {
+        overview: true,
+        receive: false,
+        transactions: false,
+        staking: true,
+        peers: false,
+        canonical: Boolean(canonicalUrl),
+        send: false,
+        addressBook: false,
+        backupExport: false,
+        lockUnlock: false,
+      },
     })
   }
 })
