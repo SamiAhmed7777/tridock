@@ -1,43 +1,33 @@
+# Pre-built TRIdock stack — pulls images from Docker Hub, no build needed
+# Usage: docker compose -f docker-compose.hub.yml up -d
+
 services:
   tridock:
-    # Pre-built from Docker Hub — no build needed
     image: samiahmed7777/tridock:latest
-    # For local development, replace the above with: build: .
-    container_name: tridock-dev
+    container_name: tridock
     restart: unless-stopped
     ports:
-      - "24116:24112/tcp"
-      - "24116:24112/udp"
-      - "19116:19112/tcp"
+      - "24112:24112/tcp"
+      - "24112:24112/udp"
+      - "19112:19112/tcp"
     environment:
       TRI_MODE: full
-      TRI_NODE_NAME: tridock-dev
-      TRI_INSTANCE_ID: tridock-dev
+      TRI_NODE_NAME: tridock
+      TRI_INSTANCE_ID: tridock
       TRI_WALLET_ID: primary
       TRI_ROLE: wallet
-      TRI_VERSION: "5.7.6"
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
       TRI_PREFER_BOOTSTRAP: "1"
-      TRI_BOOTSTRAP_TIMEOUT: "30"
-      TRI_BOOTSTRAP_MIN_BLOCK_BYTES: "100000000"
-      TRI_BOOTSTRAP_MIN_LDB_COUNT: "300"
       TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
       TRI_RELEASE_BASE_URL: "https://github.com/SamiAhmed7777/triangles_v5/releases/download"
-      TRI_RELEASE_FILENAME: ""
-      TRI_BIN_DOWNLOAD_URL: ""
-      TRI_BIN_FALLBACK_URLS: ""
-      TRI_BIN_SHA256: ""
       TRI_RPCUSER: tri
-      TRI_RPCPASSWORD: change-me
+      TRI_RPCPASSWORD: change-me-rpc-password
       TRI_RPCPORT: "19112"
       TRI_PORT: "24112"
-      TRI_MAX_CONNECTIONS: "64"
-      TRI_DBCACHE: "512"
       TRI_ENABLE_WRITE_OPS: "1"
       TRI_ALLOW_SEND_BROADCAST: "1"
       TRI_ALLOW_WALLET_UNLOCK: "1"
-      TRI_ALLOW_RESEED: "0"
       TRI_ALLOW_BACKUP_EXPORT: "1"
       TRI_WALLET_EXPORT_PATH: "/tri/data/wallet.dat"
     volumes:
@@ -51,9 +41,7 @@ services:
       - tri_logs:/tri/logs
 
   tridock-web-wallet:
-    # Pre-built from Docker Hub — no build needed
     image: samiahmed7777/tridock-web-wallet:latest
-    # For local development, replace the above with: build: ../tri-wallet-web
     container_name: tridock-web-wallet
     restart: unless-stopped
     ports:
@@ -62,10 +50,7 @@ services:
       PORT: "4177"
       TRI_RPC_URL: "http://tridock:19112/"
       TRI_RPC_USER: tri
-      TRI_RPC_PASSWORD: change-me
-      TRI_CANONICAL_RPC_URL: ""
-      TRI_CANONICAL_RPC_USER: tri
-      TRI_CANONICAL_RPC_PASSWORD: change-me
+      TRI_RPC_PASSWORD: change-me-rpc-password
       TRI_ENABLE_WRITE_OPS: "1"
       TRI_ALLOW_SEND_BROADCAST: "1"
       TRI_ALLOW_WALLET_UNLOCK: "1"

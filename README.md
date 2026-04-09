@@ -26,6 +26,22 @@ TRIdock is a Docker-first Triangles node image with Tor support, auto-bootstrap,
 
 ## Quick start
 
+### Pull pre-built images (recommended)
+
+```bash
+docker compose -f docker-compose.hub.yml up -d
+```
+
+This pulls `samiahmed7777/tridock:latest` and `samiahmed7777/tridock-web-wallet:latest` from Docker Hub and starts the full stack on ports 4177 (web UI), 19112 (RPC), and 24112 (P2P).
+
+### Build from source
+
+```bash
+git clone https://git.sami/sami7777/tridock.git
+cd tridock
+docker compose up -d --build
+```
+
 ### 1. Start with the default release-driven path
 
 By default TRIdock fetches the latest TRI daemon package from GitHub Releases automatically. You do not need to provide `trianglesd` or shared libraries for the normal path.
