@@ -9,7 +9,7 @@ BIN_DIR="${TRI_BIN_DIR:-/tri/bin}"
 LIB_DIR="${TRI_LIB_DIR:-/tri/lib}"
 CACHE_DIR="${TRI_CACHE_DIR:-/tri/cache}"
 TRI_BIN="${TRI_BIN:-$BIN_DIR/trianglesd}"
-TRI_VERSION="${TRI_VERSION:-latest}"
+TRI_VERSION="${TRI_VERSION:-5.7.6}"
 TRI_RELEASE_BASE_URL="${TRI_RELEASE_BASE_URL:-https://github.com/SamiAhmed7777/triangles_v5/releases/download}"
 TRI_RELEASE_FILENAME="${TRI_RELEASE_FILENAME:-}"
 TRI_RELEASE_URL="${TRI_RELEASE_URL:-}"
@@ -66,35 +66,13 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$NODE_NAME] $*"; }
 warn() { log "WARN: $*"; }
 fail() { set_status "error" "$*"; log "ERROR: $*"; exit 1; }
 
-resolve_latest_tri_release() {
-  local api_url="https://api.github.com/repos/SamiAhmed7777/triangles_v5/releases/latest"
-  local latest_tag latest_version
-
-  latest_tag="$(curl -fsSL "$api_url" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)" || true
-  [ -n "$latest_tag" ] || fail "Could not resolve latest triangles_v5 release tag"
-
-  latest_version="${latest_tag#v}"
-  [ -n "$latest_version" ] || fail "Latest triangles_v5 tag was invalid: $latest_tag"
-
-  TRI_VERSION="$latest_version"
-  TRI_RELEASE_FILENAME="cryptographic-triangles-daemon_${TRI_VERSION}_amd64.deb"
-  TRI_RELEASE_URL="${TRI_RELEASE_BASE_URL}/${latest_tag}/${TRI_RELEASE_FILENAME}"
-  TRI_BIN_DOWNLOAD_URL="$TRI_RELEASE_URL"
-
-  log "Resolved latest triangles_v5 release: ${latest_tag}"
-}
-
 resolve_tri_release_inputs() {
   if [ -z "$TRI_RELEASE_URL" ]; then
-    if [ "$TRI_VERSION" = "latest" ]; then
-      resolve_latest_tri_release
-    else
-      if [ -z "$TRI_RELEASE_FILENAME" ]; then
-        TRI_RELEASE_FILENAME="cryptographic-triangles-daemon_${TRI_VERSION}_amd64.deb"
-      fi
-      TRI_RELEASE_URL="${TRI_RELEASE_BASE_URL}/v${TRI_VERSION}/${TRI_RELEASE_FILENAME}"
-      TRI_BIN_DOWNLOAD_URL="${TRI_BIN_DOWNLOAD_URL:-$TRI_RELEASE_URL}"
+    if [ -z "$TRI_RELEASE_FILENAME" ]; then
+      TRI_RELEASE_FILENAME="cryptographic-triangles-daemon_${TRI_VERSION}_amd64.deb"
     fi
+    TRI_RELEASE_URL="${TRI_RELEASE_BASE_URL}/v${TRI_VERSION}/${TRI_RELEASE_FILENAME}"
+    TRI_BIN_DOWNLOAD_URL="${TRI_BIN_DOWNLOAD_URL:-$TRI_RELEASE_URL}"
   fi
 
   if [ -z "$TRI_RELEASE_FILENAME" ]; then
