@@ -8,6 +8,19 @@ BOOTSTRAP_DIR="${TRI_BOOTSTRAP_DIR:-/tri/bootstrap}"
 BIN_DIR="${TRI_BIN_DIR:-/tri/bin}"
 LIB_DIR="${TRI_LIB_DIR:-/tri/lib}"
 CACHE_DIR="${TRI_CACHE_DIR:-/tri/cache}"
+BACKUPS_DIR="${TRI_BACKUPS_DIR:-/tri/backups}"
+CONFIG_DIR="${TRI_CONFIG_DIR:-/tri/config}"
+UI_DATA_DIR="${TRI_UI_DATA_DIR:-/tri/ui-data}"
+LOGS_DIR="${TRI_LOGS_DIR:-/tri/logs}"
+TRI_INSTANCE_ID="${TRI_INSTANCE_ID:-$NODE_NAME}"
+TRI_WALLET_ID="${TRI_WALLET_ID:-default}"
+TRI_ROLE="${TRI_ROLE:-wallet}"
+TRI_ENABLE_WRITE_OPS="${TRI_ENABLE_WRITE_OPS:-0}"
+TRI_ALLOW_SEND_BROADCAST="${TRI_ALLOW_SEND_BROADCAST:-0}"
+TRI_ALLOW_WALLET_UNLOCK="${TRI_ALLOW_WALLET_UNLOCK:-0}"
+TRI_ALLOW_RESEED="${TRI_ALLOW_RESEED:-0}"
+TRI_ALLOW_BACKUP_EXPORT="${TRI_ALLOW_BACKUP_EXPORT:-1}"
+TRI_WALLET_EXPORT_PATH="${TRI_WALLET_EXPORT_PATH:-$DATA_DIR/wallet.dat}"
 TRI_BIN="${TRI_BIN:-$BIN_DIR/trianglesd}"
 TRI_VERSION="${TRI_VERSION:-5.7.6}"
 TRI_RELEASE_BASE_URL="${TRI_RELEASE_BASE_URL:-https://github.com/SamiAhmed7777/triangles_v5/releases/download}"
@@ -52,6 +65,12 @@ CANONICAL_HASH_FILE="$STATE_DIR/canonical-bestblock"
 LOCAL_HEIGHT_FILE="$STATE_DIR/local-height"
 LOCAL_HASH_FILE="$STATE_DIR/local-bestblock"
 TRI_READY_FILE="$STATE_DIR/node-ready"
+INSTANCE_ID_FILE="$STATE_DIR/instance-id"
+WALLET_ID_FILE="$STATE_DIR/wallet-id"
+ROLE_FILE="$STATE_DIR/role"
+CAPABILITIES_FILE="$STATE_DIR/capabilities.json"
+PATHS_FILE="$STATE_DIR/paths.json"
+WALLET_EXPORT_FILE="$STATE_DIR/wallet-export-path"
 BOOTSTRAP_ACTIVE=0
 RECOVERY_PERFORMED=0
 
@@ -86,11 +105,50 @@ resolve_tri_release_inputs() {
 
 resolve_tri_release_inputs
 
+write_json_file() {
+  local file="$1"
+  local content="$2"
+  mkdir -p "$(dirname "$file")"
+  printf '%s\n' "$content" > "$file"
+}
+
+publish_static_metadata() {
+  write_state_value "$INSTANCE_ID_FILE" "$TRI_INSTANCE_ID"
+  write_state_value "$WALLET_ID_FILE" "$TRI_WALLET_ID"
+  write_state_value "$ROLE_FILE" "$TRI_ROLE"
+  write_state_value "$WALLET_EXPORT_FILE" "$TRI_WALLET_EXPORT_PATH"
+
+  write_json_file "$CAPABILITIES_FILE" "$(jq -cn \
+    --arg instanceId "$TRI_INSTANCE_ID" \
+    --arg walletId "$TRI_WALLET_ID" \
+    --arg role "$TRI_ROLE" \
+    --argjson writeOps $( [ "$TRI_ENABLE_WRITE_OPS" = "1" ] && echo true || echo false ) \
+    --argjson sendEnabled $( [ "$TRI_ALLOW_SEND_BROADCAST" = "1" ] && echo true || echo false ) \
+    --argjson unlockEnabled $( [ "$TRI_ALLOW_WALLET_UNLOCK" = "1" ] && echo true || echo false ) \
+    --argjson reseedAllowed $( [ "$TRI_ALLOW_RESEED" = "1" ] && echo true || echo false ) \
+    --argjson backupEnabled $( [ "$TRI_ALLOW_BACKUP_EXPORT" = "1" ] && echo true || echo false ) \
+    --argjson canonicalCheck $( [ -n "$CANONICAL_RPC_URL" ] && echo true || echo false ) \
+    '{instanceId:$instanceId,walletId:$walletId,role:$role,writeOps:$writeOps,sendEnabled:$sendEnabled,unlockEnabled:$unlockEnabled,reseedAllowed:$reseedAllowed,backupEnabled:$backupEnabled,canonicalCheck:$canonicalCheck}')"
+
+  write_json_file "$PATHS_FILE" "$(jq -cn \
+    --arg data "$DATA_DIR" \
+    --arg bootstrap "$BOOTSTRAP_DIR" \
+    --arg cache "$CACHE_DIR" \
+    --arg state "$STATE_DIR" \
+    --arg backups "$BACKUPS_DIR" \
+    --arg config "$CONFIG_DIR" \
+    --arg uiData "$UI_DATA_DIR" \
+    --arg logs "$LOGS_DIR" \
+    --arg exportPath "$TRI_WALLET_EXPORT_PATH" \
+    '{data:$data,bootstrap:$bootstrap,cache:$cache,state:$state,backups:$backups,config:$config,uiData:$uiData,logs:$logs,exportPath:$exportPath}')"
+}
+
 init_state_dir() {
   mkdir -p "$STATE_DIR"
   : > "$STATUS_FILE"
   : > "$STATUS_REASON_FILE"
   rm -f "$BOOTSTRAP_PROGRESS_FILE" "$BOOTSTRAP_SOURCE_FILE" "$CANONICAL_STATUS_FILE" "$CANONICAL_HEIGHT_FILE" "$CANONICAL_HASH_FILE" "$LOCAL_HEIGHT_FILE" "$LOCAL_HASH_FILE" "$TRI_READY_FILE"
+  publish_static_metadata
 }
 
 set_status() {
@@ -413,7 +471,7 @@ require_binary() {
 }
 
 write_config() {
-  mkdir -p "$DATA_DIR" "$BOOTSTRAP_DIR" "$CACHE_DIR" "$STATE_DIR" /tri/tor /var/log/tri
+  mkdir -p "$DATA_DIR" "$BOOTSTRAP_DIR" "$CACHE_DIR" "$STATE_DIR" "$BACKUPS_DIR" "$CONFIG_DIR" "$UI_DATA_DIR" "$LOGS_DIR" /tri/tor /var/log/tri
   cat > "$CONF_FILE" <<CFG
 rpcuser=$RPC_USER
 rpcpassword=$RPC_PASSWORD
@@ -464,6 +522,8 @@ CFG
       echo "staking=1" >> "$CONF_FILE"
       ;;
   esac
+
+  cp -f "$CONF_FILE" "$CONFIG_DIR/triangles.conf"
 }
 
 start_tor() {

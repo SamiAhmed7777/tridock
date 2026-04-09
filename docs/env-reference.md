@@ -34,3 +34,16 @@
 | `TRI_EXTERNAL_IP` | empty | External IP hint |
 | `TRI_EXTRA_ARGS` | empty | Extra raw daemon args |
 | `TRI_BOOTSTRAP_URLS` | built-in | Comma-separated bootstrap archive URLs |
+| `TRI_BACKUPS_DIR` | `/tri/backups` | Backup/export staging directory |
+| `TRI_CONFIG_DIR` | `/tri/config` | Generated config copy directory |
+| `TRI_UI_DATA_DIR` | `/tri/ui-data` | UI metadata directory for wallet-web |
+| `TRI_LOGS_DIR` | `/tri/logs` | Durable logs directory |
+| `TRI_INSTANCE_ID` | node name | Appliance instance identifier |
+| `TRI_WALLET_ID` | `default` | Wallet identity label |
+| `TRI_ROLE` | `wallet` | Appliance role (`wallet`, `seed`, `canonical`, `replica`, etc.) |
+| `TRI_ENABLE_WRITE_OPS` | `0` | Publish that write-capable wallet ops are enabled |
+| `TRI_ALLOW_SEND_BROADCAST` | `0` | Publish/send that live wallet broadcast is enabled |
+| `TRI_ALLOW_WALLET_UNLOCK` | `0` | Publish that wallet lock/unlock controls are enabled |
+| `TRI_ALLOW_RESEED` | `0` | Publish that reseed/admin destructive flow is allowed |
+| `TRI_ALLOW_BACKUP_EXPORT` | `1` | Publish that backup export should be available |
+| `TRI_WALLET_EXPORT_PATH` | `/tri/data/wallet.dat` | Export source path exposed to wallet-web/operator tooling |

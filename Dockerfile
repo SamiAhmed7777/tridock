@@ -35,13 +35,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dpkg \
  && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /tri/bin /tri/lib /tri/data /tri/bootstrap /var/lib/tor /var/log/tri /tri/cache
+RUN mkdir -p /tri/bin /tri/lib /tri/data /tri/bootstrap /tri/backups /tri/config /tri/ui-data /tri/logs /var/lib/tor /var/log/tri /tri/cache
 
 COPY entrypoint.sh /entrypoint.sh
 COPY healthcheck.sh /healthcheck.sh
 RUN chmod +x /entrypoint.sh /healthcheck.sh
 
-VOLUME ["/tri/data", "/tri/bootstrap", "/tri/bin", "/tri/lib", "/tri/cache", "/tri/state"]
+VOLUME ["/tri/data", "/tri/bootstrap", "/tri/bin", "/tri/lib", "/tri/cache", "/tri/state", "/tri/backups", "/tri/config", "/tri/ui-data", "/tri/logs"]
 
 EXPOSE 24112/tcp 24112/udp
 

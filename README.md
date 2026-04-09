@@ -21,6 +21,8 @@ TRIdock is a Docker-first Triangles node image with Tor support, auto-bootstrap,
 - Still supports local binary/lib overrides when you explicitly want them
 - Uses environment variables for mode, bootstrap URLs, binary sources, ports, staking, and extra args
 - Includes a bootstrap-aware container healthcheck and state files so fresh nodes can be distinguished from broken ones
+- Publishes wallet-appliance metadata under `/tri/state` so a web UI or operator can see instance identity, role, paths, and capability flags
+- Separates persistent storage by purpose: node data, state, backups, config, UI metadata, and logs
 
 ## Quick start
 
@@ -93,6 +95,12 @@ Useful files:
 - `/tri/state/local-height`
 - `/tri/state/local-bestblock`
 - `/tri/state/node-ready`
+- `/tri/state/instance-id`
+- `/tri/state/wallet-id`
+- `/tri/state/role`
+- `/tri/state/capabilities.json`
+- `/tri/state/paths.json`
+- `/tri/state/wallet-export-path`
 
 This means a fresh node can report meaningful bootstrap progress instead of looking identical to a broken container.
 
@@ -159,6 +167,10 @@ When enabled, TRIdock records the canonical and local height/hash in `/tri/state
 - `/tri/bootstrap` — temporary bootstrap archive staging
 - `/tri/cache` — cached TRI release artifacts
 - `/tri/state` — runtime state and readiness markers
+- `/tri/backups` — backup/export staging
+- `/tri/config` — generated runtime config copies
+- `/tri/ui-data` — labels/notes/UI metadata for the web layer
+- `/tri/logs` — durable logs and future maintenance artifacts
 
 Optional override mounts:
 
@@ -188,6 +200,21 @@ See:
 Planned canonical image:
 
 - `samiahmed7777/tridock:latest`
+
+## Wallet appliance direction
+
+TRIdock is no longer just a seed/container wrapper. The intended shape is a full Docker wallet appliance:
+
+- `trianglesd` as the real daemon
+- Tor, bootstrap, and chain-state lifecycle inside the container
+- persistent wallet storage in `/tri/data`
+- exported operator/state metadata in `/tri/state`
+- backup/export staging in `/tri/backups`
+- generated config copies in `/tri/config`
+- UI metadata in `/tri/ui-data`
+- a separate web layer on top that reads real capability state instead of faking actions
+
+Guardrails should be explicit readiness and policy checks, not pretend read-only UX.
 
 ## Release and Upstream Tracking Policy
 

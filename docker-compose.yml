@@ -11,7 +11,10 @@ services:
     environment:
       TRI_MODE: full
       TRI_NODE_NAME: tridock-dev
-      TRI_VERSION: "latest"
+      TRI_INSTANCE_ID: tridock-dev
+      TRI_WALLET_ID: primary
+      TRI_ROLE: wallet
+      TRI_VERSION: "5.7.6"
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
       TRI_PREFER_BOOTSTRAP: "1"
@@ -30,11 +33,21 @@ services:
       TRI_PORT: "24112"
       TRI_MAX_CONNECTIONS: "64"
       TRI_DBCACHE: "512"
+      TRI_ENABLE_WRITE_OPS: "1"
+      TRI_ALLOW_SEND_BROADCAST: "1"
+      TRI_ALLOW_WALLET_UNLOCK: "1"
+      TRI_ALLOW_RESEED: "0"
+      TRI_ALLOW_BACKUP_EXPORT: "1"
+      TRI_WALLET_EXPORT_PATH: "/tri/data/wallet.dat"
     volumes:
       - tri_data:/tri/data
       - tri_bootstrap:/tri/bootstrap
       - tri_cache:/tri/cache
       - tri_state:/tri/state
+      - tri_backups:/tri/backups
+      - tri_config:/tri/config
+      - tri_ui_data:/tri/ui-data
+      - tri_logs:/tri/logs
 
   tridock-web-wallet:
     build: ../tri-wallet-web
@@ -51,9 +64,18 @@ services:
       TRI_CANONICAL_RPC_URL: ""
       TRI_CANONICAL_RPC_USER: tri
       TRI_CANONICAL_RPC_PASSWORD: change-me
+      TRI_ENABLE_WRITE_OPS: "1"
+      TRI_ALLOW_SEND_BROADCAST: "1"
+      TRI_ALLOW_WALLET_UNLOCK: "1"
+      TRI_WALLET_EXPORT_PATH: "/tri/data/wallet.dat"
+      TRI_WALLET_EXPORT_ALLOWLIST: "/tri/data"
+      TRI_WALLET_WEB_DATA_DIR: "/app/data"
       TRI_STATE_DIR: "/tri/state"
     volumes:
       - tri_state:/tri/state:ro
+      - tri_data:/tri/data:ro
+      - tri_ui_data:/app/data
+      - tri_backups:/tri/backups
     depends_on:
       - tridock
 
@@ -62,3 +84,7 @@ volumes:
   tri_bootstrap:
   tri_cache:
   tri_state:
+  tri_backups:
+  tri_config:
+  tri_ui_data:
+  tri_logs:
