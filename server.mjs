@@ -570,6 +570,9 @@ app.get('/api/wallet/summary', async (_req, res) => {
       buildCapabilities(nodeState),
     ])
 
+    // Canonical comparison: use external RPC if configured, otherwise fall back to
+    // TRIdock's own state-file chain tip (written by the node itself when it is
+    // the reference/canonical instance).
     let canonical = { enabled: false }
     if (canonicalUrl) {
       const [canonicalHeight, canonicalBestblock] = await Promise.all([
@@ -581,6 +584,16 @@ app.get('/api/wallet/summary', async (_req, res) => {
         matched: canonicalHeight === blockCount && canonicalBestblock === bestBlock,
         canonicalHeight,
         canonicalBestblock,
+      }
+    } else if (nodeState.canonicalHeight && nodeState.canonicalBestblock) {
+      // TRIdock wrote its own chain tip to state files — use those as the
+      // reference so the UI still shows a meaningful height/hash even without
+      // an external canonical RPC.
+      canonical = {
+        enabled: true,
+        matched: nodeState.canonicalHeight === blockCount && nodeState.canonicalBestblock === bestBlock,
+        canonicalHeight: nodeState.canonicalHeight,
+        canonicalBestblock: nodeState.canonicalBestblock,
       }
     }
 

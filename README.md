@@ -84,11 +84,15 @@ services:
       TRI_STATE_DIR: "/tri/state"
     volumes:
       - tridock-wallet-web-data:/app/data
+      - tridock-state:/tri/state:ro
+      - tridock-logs:/tri/logs:ro
     depends_on:
       - tridock
 
 volumes:
   tridock-wallet-web-data:
+  tridock-state:
+  tridock-logs:
 ```
 
 ## Design note
@@ -101,3 +105,9 @@ This app is not meant to fake wallet behavior. It should expose the real capabil
 - whether the node matches the chain you trust
 
 It should still avoid raw wallet-file manipulation in normal UI flows. Routine wallet actions should go through the TRIdock control/API layer, while explicit backup/export remains a deliberate operator action.
+
+## Canonical chain comparison
+
+When `TRI_CANONICAL_RPC_URL` is set, the app compares the connected node's chain tip against the canonical reference via live RPC calls.
+
+When `TRI_CANONICAL_RPC_URL` is empty but `TRI_STATE_DIR` is mounted (from a TRIdock instance), the app falls back to TRIdock's own published chain tip in the state files. This lets the web wallet display honest chain height and hash even when it is the primary reference node itself.
