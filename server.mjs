@@ -93,6 +93,8 @@ async function rpcOptional(method, params = []) {
   }
 }
 
+app.use(express.json())
+
 app.get('/api/health', async (_req, res) => {
   const nodeState = await readNodeState()
   res.json({ ok: true, rpcUrl, canonicalEnabled: Boolean(canonicalUrl), nodeState })
@@ -100,6 +102,78 @@ app.get('/api/health', async (_req, res) => {
 
 app.get('/api/node/state', async (_req, res) => {
   res.json(await readNodeState())
+})
+
+app.get('/api/wallet/contracts', async (_req, res) => {
+  const nodeState = await readNodeState()
+  res.json({
+    ok: true,
+    nodeState,
+    send: {
+      available: false,
+      reason: 'Guarded wallet writes not implemented yet',
+      requiredChecks: [
+        'explicit-user-approval',
+        'fresh-backup-verified',
+        'wallet-unlock-policy',
+        'transaction-preview',
+        'broadcast-confirmation',
+      ],
+      fields: ['address', 'amount', 'memo'],
+    },
+    backup: {
+      available: false,
+      reason: 'Backup/export workflow is scaffolded but not implemented',
+      requiredChecks: [
+        'safe-target-path',
+        'wallet-safe-export-strategy',
+        'restore-verification',
+      ],
+      actions: ['create-backup', 'export-wallet-package', 'verify-restore-package'],
+    },
+    labels: {
+      available: false,
+      reason: 'Address labels/notes are UI-only scaffolding right now',
+      fields: ['address', 'label', 'note'],
+    },
+  })
+})
+
+app.post('/api/wallet/send/preview', async (_req, res) => {
+  const nodeState = await readNodeState()
+  res.status(501).json({
+    ok: false,
+    code: 'SEND_PREVIEW_NOT_IMPLEMENTED',
+    message: 'Guarded send preview is not implemented yet.',
+    nodeState,
+    requiredChecks: [
+      'explicit-user-approval',
+      'fresh-backup-verified',
+      'wallet-unlock-policy',
+      'transaction-preview',
+    ],
+  })
+})
+
+app.post('/api/wallet/backup/export', async (_req, res) => {
+  const nodeState = await readNodeState()
+  res.status(501).json({
+    ok: false,
+    code: 'BACKUP_EXPORT_NOT_IMPLEMENTED',
+    message: 'Wallet backup/export is not implemented yet.',
+    nodeState,
+    requiredChecks: ['safe-target-path', 'wallet-safe-export-strategy', 'restore-verification'],
+  })
+})
+
+app.post('/api/wallet/labels/save', async (_req, res) => {
+  const nodeState = await readNodeState()
+  res.status(501).json({
+    ok: false,
+    code: 'LABELS_NOT_IMPLEMENTED',
+    message: 'Address label saving is not implemented yet.',
+    nodeState,
+  })
 })
 
 app.get('/api/wallet/features', async (_req, res) => {
@@ -261,7 +335,7 @@ app.get('/api/wallet/summary', async (_req, res) => {
   }
 })
 
-app.post('/api/rpc', express.json(), async (req, res) => {
+app.post('/api/rpc', async (req, res) => {
   try {
     const { method, params = [] } = req.body || {}
     if (!allowedMethods.has(method)) {

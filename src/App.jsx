@@ -63,7 +63,20 @@ function StatusPill({ children, color = '#8aa2c8', background = 'rgba(138,162,20
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background, color, fontWeight: 700, fontSize: 12 }}>{children}</span>
 }
 
-function ActionButton({ children, disabled = false, onClick }) {
+function ActionButton({ children, disabled = false, onClick, tone = 'default' }) {
+  const styles = {
+    default: {
+      border: disabled ? '1px solid #4a505c' : '1px solid #53698a',
+      background: disabled ? '#16191f' : '#202a38',
+      color: disabled ? '#7f8896' : '#ecf2ff',
+    },
+    warning: {
+      border: disabled ? '1px solid #5a4146' : '1px solid #8b4b57',
+      background: disabled ? '#1a1416' : '#2b181d',
+      color: disabled ? '#987f84' : '#ffdbe1',
+    },
+  }
+  const style = styles[tone] || styles.default
   return (
     <button
       onClick={onClick}
@@ -71,11 +84,9 @@ function ActionButton({ children, disabled = false, onClick }) {
       style={{
         padding: '9px 12px',
         borderRadius: 10,
-        border: disabled ? '1px solid #4a505c' : '1px solid #53698a',
-        background: disabled ? '#16191f' : '#202a38',
-        color: disabled ? '#7f8896' : '#ecf2ff',
         cursor: disabled ? 'not-allowed' : 'pointer',
         fontWeight: 700,
+        ...style,
       }}
     >
       {children}
@@ -83,11 +94,20 @@ function ActionButton({ children, disabled = false, onClick }) {
   )
 }
 
-function Field({ label, placeholder, disabled = true, value = '' }) {
+function Field({ label, placeholder, disabled = true, value = '', onChange }) {
   return (
     <div>
       <div style={{ color: '#aeb7c4', marginBottom: 6 }}>{label}</div>
-      <input disabled={disabled} value={value} readOnly placeholder={placeholder} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: disabled ? '#8c96a5' : '#eef2f7' }} />
+      <input disabled={disabled} value={value} onChange={onChange} placeholder={placeholder} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: disabled ? '#8c96a5' : '#eef2f7' }} />
+    </div>
+  )
+}
+
+function TextArea({ label, placeholder, disabled = false, value = '', onChange }) {
+  return (
+    <div>
+      <div style={{ color: '#aeb7c4', marginBottom: 6 }}>{label}</div>
+      <textarea disabled={disabled} value={value} onChange={onChange} placeholder={placeholder} rows={4} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: disabled ? '#8c96a5' : '#eef2f7', resize: 'vertical' }} />
     </div>
   )
 }
@@ -119,6 +139,16 @@ function addressCount(received = []) {
 function shortAddress(value) {
   if (!value) return '—'
   return value.length > 18 ? `${value.slice(0, 10)}…${value.slice(-8)}` : value
+}
+
+function downloadDataUrl(url, filename) {
+  if (!url) return
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
 }
 
 function NavTabs({ active, onChange }) {
@@ -181,9 +211,9 @@ function ReceiveCard({ item, selected, onSelect, copied, onCopy }) {
   )
 }
 
-function TxRow({ tx, onSelect }) {
+function TxRow({ tx, onSelect, selected }) {
   return (
-    <div onClick={() => onSelect(tx)} style={{ padding: 12, borderRadius: 10, border: '1px solid #343942', background: '#181b20', cursor: 'pointer' }}>
+    <div onClick={() => onSelect(tx)} style={{ padding: 12, borderRadius: 10, border: selected ? '1px solid #5a7ab6' : '1px solid #343942', background: selected ? '#1a2330' : '#181b20', cursor: 'pointer' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <strong>{tx.category || 'unknown'}</strong>
         <span style={{ color: '#aeb7c4' }}>{formatTime(tx.time)}</span>
@@ -195,10 +225,11 @@ function TxRow({ tx, onSelect }) {
   )
 }
 
-function AppInner() {
+export default function App() {
   const [health, setHealth] = useState(null)
   const [nodeState, setNodeState] = useState(null)
   const [summary, setSummary] = useState(null)
+  const [contracts, setContracts] = useState(null)
   const [summaryError, setSummaryError] = useState('')
   const [lastUpdated, setLastUpdated] = useState(null)
   const [selectedTx, setSelectedTx] = useState('all')
@@ -207,26 +238,33 @@ function AppInner() {
   const [copiedAddress, setCopiedAddress] = useState('')
   const [selectedTransaction, setSelectedTransaction] = useState(null)
   const [qrDataUrl, setQrDataUrl] = useState('')
+  const [labelDrafts, setLabelDrafts] = useState({})
+  const [noteDrafts, setNoteDrafts] = useState({})
+  const [sendPreviewStatus, setSendPreviewStatus] = useState('')
+  const [backupStatus, setBackupStatus] = useState('')
 
   useEffect(() => {
     let cancelled = false
 
     async function load() {
       try {
-        const [healthRes, stateRes, summaryRes] = await Promise.all([
+        const [healthRes, stateRes, summaryRes, contractsRes] = await Promise.all([
           fetch('/api/health'),
           fetch('/api/node/state'),
           fetch('/api/wallet/summary'),
+          fetch('/api/wallet/contracts'),
         ])
 
         const healthData = await healthRes.json().catch(() => null)
         const stateData = await stateRes.json().catch(() => null)
         const summaryData = await summaryRes.json().catch(() => null)
+        const contractsData = await contractsRes.json().catch(() => null)
 
         if (cancelled) return
 
         setHealth(healthData)
         setNodeState(stateData)
+        setContracts(contractsData)
         setLastUpdated(new Date())
 
         if (summaryData) {
@@ -270,6 +308,12 @@ function AppInner() {
   }, [selectedAddress, received])
 
   useEffect(() => {
+    if (!selectedTransaction && txs[0]) {
+      setSelectedTransaction(txs[0])
+    }
+  }, [selectedTransaction, txs])
+
+  useEffect(() => {
     let cancelled = false
     async function buildQr() {
       if (!selectedReceive?.address) {
@@ -311,6 +355,26 @@ function AppInner() {
     } catch {
       setCopiedAddress(address)
       setTimeout(() => setCopiedAddress(''), 2000)
+    }
+  }
+
+  async function handlePreviewSend() {
+    try {
+      const res = await fetch('/api/wallet/send/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const data = await res.json().catch(() => null)
+      setSendPreviewStatus(data?.message || `Preview unavailable (${res.status})`)
+    } catch (error) {
+      setSendPreviewStatus(error?.message || 'Preview unavailable')
+    }
+  }
+
+  async function handleBackupAction() {
+    try {
+      const res = await fetch('/api/wallet/backup/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const data = await res.json().catch(() => null)
+      setBackupStatus(data?.message || `Backup unavailable (${res.status})`)
+    } catch (error) {
+      setBackupStatus(error?.message || 'Backup unavailable')
     }
   }
 
@@ -403,7 +467,7 @@ function AppInner() {
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <ActionButton onClick={() => handleCopyAddress(selectedReceive.address)}>{copiedAddress === selectedReceive.address ? 'Copied' : 'Copy full address'}</ActionButton>
-                <ActionButton disabled={!qrDataUrl}>Save QR soon</ActionButton>
+                <ActionButton disabled={!qrDataUrl} onClick={() => downloadDataUrl(qrDataUrl, `tri-${selectedReceive.address}.png`)}>Download QR</ActionButton>
               </div>
             </div>
           ) : <div style={{ color: '#aeb7c4' }}>Pick a receive address to inspect it here.</div>}
@@ -414,7 +478,8 @@ function AppInner() {
             <InfoRow label="Copy address" value="live" />
             <InfoRow label="Receive details" value="live" />
             <InfoRow label="QR rendering" value="live" />
-            <InfoRow label="Address labels" value="planned" />
+            <InfoRow label="QR download" value="live" />
+            <InfoRow label="Address labels" value="scaffolded" />
             <InfoRow label="Generate new address" value="blocked until guarded write path exists" />
           </div>
         </Card>
@@ -431,9 +496,10 @@ function AppInner() {
           <Field label="Memo / label" placeholder="Optional note" />
           <Field label="Fee estimate" placeholder="Will appear once guarded send is implemented" />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button disabled style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #6a3943', background: '#2b181d', color: '#ffcad4', cursor: 'not-allowed', fontWeight: 700 }}>Send disabled until guarded wallet writes exist</button>
-            <ActionButton disabled>Preview transaction</ActionButton>
+            <ActionButton tone="warning" disabled>Send disabled until guarded wallet writes exist</ActionButton>
+            <ActionButton onClick={handlePreviewSend}>Preview contract</ActionButton>
           </div>
+          {sendPreviewStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{sendPreviewStatus}</div> : null}
         </div>
       </Card>
 
@@ -451,7 +517,7 @@ function AppInner() {
         <Card title="Planned send flow" subtitle="How this should eventually work" tone="accent">
           <div style={{ display: 'grid', gap: 8 }}>
             <InfoRow label="Compose" value="planned" />
-            <InfoRow label="Preview / fee check" value="planned" />
+            <InfoRow label="Preview / fee check" value="contract exposed" />
             <InfoRow label="Final confirmation" value="planned" />
             <InfoRow label="Broadcast result" value="planned" />
           </div>
@@ -470,7 +536,7 @@ function AppInner() {
         </div>
         <div style={{ display: 'grid', gap: 10 }}>
           {txs.length ? txs.map((tx, index) => (
-            <TxRow key={`${tx.txid || index}-${index}`} tx={tx} onSelect={setSelectedTransaction} />
+            <TxRow key={`${tx.txid || index}-${index}`} tx={tx} onSelect={setSelectedTransaction} selected={selectedTransaction?.txid === tx.txid && selectedTransaction?.time === tx.time} />
           )) : <div style={{ color: '#aeb7c4' }}>No transactions to show for this filter yet.</div>}
         </div>
       </Card>
@@ -484,6 +550,10 @@ function AppInner() {
             <InfoRow label="Confirmations" value={selectedTransaction.confirmations ?? '—'} />
             <InfoRow label="Address" value={shortAddress(selectedTransaction.address)} mono />
             <InfoRow label="TXID" value={formatHash(selectedTransaction.txid)} mono />
+            <InfoRow label="Raw address" value={selectedTransaction.address || '—'} mono />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <ActionButton onClick={() => handleCopyAddress(selectedTransaction.address || selectedTransaction.txid)}>{copiedAddress === (selectedTransaction.address || selectedTransaction.txid) ? 'Copied' : 'Copy address / txid'}</ActionButton>
+            </div>
           </div>
         ) : <div style={{ color: '#aeb7c4' }}>Click a transaction on the left to open its detail view.</div>}
       </Card>
@@ -501,9 +571,17 @@ function AppInner() {
                 <span style={{ color: '#aeb7c4' }}>{formatAmount(item.amount)}</span>
               </div>
               <div style={{ marginTop: 8, fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>{item.address}</div>
+              <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+                <Field label="Label" disabled={false} value={labelDrafts[item.address] || ''} onChange={(e) => setLabelDrafts((prev) => ({ ...prev, [item.address]: e.target.value }))} placeholder="Friendly label" />
+                <TextArea label="Note" value={noteDrafts[item.address] || ''} onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [item.address]: e.target.value }))} placeholder="Address note or purpose" />
+              </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
                 <ActionButton onClick={() => handleCopyAddress(item.address)}>{copiedAddress === item.address ? 'Copied' : 'Copy'}</ActionButton>
-                <ActionButton disabled>Label soon</ActionButton>
+                <ActionButton disabled={!contracts?.labels} onClick={async () => {
+                  const res = await fetch('/api/wallet/labels/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: item.address, label: labelDrafts[item.address] || '', note: noteDrafts[item.address] || '' }) })
+                  const data = await res.json().catch(() => null)
+                  setBackupStatus(data?.message || 'Labels contract unavailable')
+                }}>Save contract</ActionButton>
               </div>
             </div>
           )) : <div style={{ color: '#aeb7c4' }}>Address book will populate from wallet receive data when RPC is ready.</div>}
@@ -513,7 +591,7 @@ function AppInner() {
       <Card title="Address actions" subtitle="Planned next layer" tone="warning">
         <div style={{ display: 'grid', gap: 8 }}>
           <InfoRow label="Generate new address" value="planned, blocked until guarded write path exists" />
-          <InfoRow label="Label address" value="planned" />
+          <InfoRow label="Label address" value="UI scaffold + API contract" />
           <InfoRow label="Copy / QR" value="live" />
           <InfoRow label="Import / export labels" value="planned" />
         </div>
@@ -535,10 +613,11 @@ function AppInner() {
             <Field label="Last verified backup" placeholder="Not available yet" />
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <ActionButton disabled>Create backup</ActionButton>
+            <ActionButton onClick={handleBackupAction}>Create backup contract</ActionButton>
             <ActionButton disabled>Export wallet package</ActionButton>
             <ActionButton disabled>Verify restore package</ActionButton>
           </div>
+          {backupStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{backupStatus}</div> : null}
         </div>
       </Card>
 
@@ -591,12 +670,12 @@ function AppInner() {
         </div>
       </Card>
 
-      <Card title="Wallet safety" subtitle="Hard rules stay visible">
+      <Card title="Action contracts" subtitle="Backend stubs now describe the guarded write surface">
         <div style={{ display: 'grid', gap: 8 }}>
-          <InfoRow label="Raw wallet files" value="never touch directly from UI" />
-          <InfoRow label="wallet.dat" value="explicit approval required before risky operations" />
-          <InfoRow label="Node warmup" value="UI should degrade gracefully, not blank out" />
-          <InfoRow label="Fork awareness" value="show canonical mismatch instead of pretending normal" />
+          <InfoRow label="Send preview" value={contracts?.send?.available ? 'available' : 'contract only'} />
+          <InfoRow label="Backup export" value={contracts?.backup?.available ? 'available' : 'contract only'} />
+          <InfoRow label="Address labels" value={contracts?.labels?.available ? 'available' : 'contract only'} />
+          <InfoRow label="wallet.dat" value="still protected" />
         </div>
       </Card>
     </div>
@@ -613,48 +692,42 @@ function AppInner() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #121318 0%, #0d0e12 100%)', color: '#edf2f7', padding: 20, fontFamily: 'Segoe UI, sans-serif' }}>
-      <div style={{ maxWidth: 1320, margin: '0 auto', border: '1px solid #404652', borderRadius: 14, overflow: 'hidden', background: '#16191f', boxShadow: '0 20px 60px rgba(0,0,0,.45)' }}>
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid #343942', background: 'linear-gradient(180deg, #2a2e36, #20242b)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <img src={triLogo} alt="Triangles logo" style={{ height: 42, width: 'auto', display: 'block', filter: 'drop-shadow(0 8px 18px rgba(0,0,0,.35))' }} />
-              <div>
-                <div style={{ fontSize: 22, fontWeight: 700 }}>TRIdock Web Wallet</div>
-                <div style={{ color: '#aeb7c4', marginTop: 4 }}>Building toward a full TRI wallet while keeping dangerous writes gated</div>
+    <ErrorBoundary>
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #121318 0%, #0d0e12 100%)', color: '#edf2f7', padding: 20, fontFamily: 'Segoe UI, sans-serif' }}>
+        <div style={{ maxWidth: 1320, margin: '0 auto', border: '1px solid #404652', borderRadius: 14, overflow: 'hidden', background: '#16191f', boxShadow: '0 20px 60px rgba(0,0,0,.45)' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid #343942', background: 'linear-gradient(180deg, #2a2e36, #20242b)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <img src={triLogo} alt="Triangles logo" style={{ height: 42, width: 'auto', display: 'block', filter: 'drop-shadow(0 8px 18px rgba(0,0,0,.35))' }} />
+                <div>
+                  <div style={{ fontSize: 22, fontWeight: 700 }}>TRIdock Web Wallet</div>
+                  <div style={{ color: '#aeb7c4', marginTop: 4 }}>Building toward a full TRI wallet while keeping dangerous writes gated</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <StatusPill>{walletMode}</StatusPill>
+                <StatusPill color="#ffd38a" background="rgba(255,211,138,.12)">{nodeState?.status || 'unknown node state'}</StatusPill>
+                {canonical?.enabled ? (
+                  <StatusPill color={canonical.matched ? '#8df0b1' : '#ffb3b3'} background={canonical.matched ? 'rgba(97,214,128,.12)' : 'rgba(255,125,125,.14)'}>
+                    {canonical.matched ? 'canonical match' : 'canonical mismatch'}
+                  </StatusPill>
+                ) : null}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <StatusPill>{walletMode}</StatusPill>
-              <StatusPill color="#ffd38a" background="rgba(255,211,138,.12)">{nodeState?.status || 'unknown node state'}</StatusPill>
-              {canonical?.enabled ? (
-                <StatusPill color={canonical.matched ? '#8df0b1' : '#ffb3b3'} background={canonical.matched ? 'rgba(97,214,128,.12)' : 'rgba(255,125,125,.14)'}>
-                  {canonical.matched ? 'canonical match' : 'canonical mismatch'}
-                </StatusPill>
-              ) : null}
-            </div>
+          </div>
+
+          <div style={{ padding: 18 }}>
+            <NavTabs active={activeTab} onChange={setActiveTab} />
+            {panelByTab[activeTab]}
+
+            {summaryError ? (
+              <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: '#23161a', border: '1px solid #6a3943', color: '#ffd7de' }}>
+                <strong>RPC note:</strong> {summaryError}
+              </div>
+            ) : null}
           </div>
         </div>
-
-        <div style={{ padding: 18 }}>
-          <NavTabs active={activeTab} onChange={setActiveTab} />
-          {panelByTab[activeTab]}
-
-          {summaryError ? (
-            <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: '#23161a', border: '1px solid #6a3943', color: '#ffd7de' }}>
-              <strong>RPC note:</strong> {summaryError}
-            </div>
-          ) : null}
-        </div>
       </div>
-    </div>
-  )
-}
-
-export default function App() {
-  return (
-    <ErrorBoundary>
-      <AppInner />
     </ErrorBoundary>
   )
 }

@@ -8,8 +8,10 @@ Qt-inspired web wallet UI for TRI, designed to sit safely in front of a TRIdock 
 - Canonical-chain status support when a canonical RPC endpoint is configured
 - Live node/bootstrap/runtime state rendering even while RPC is warming up
 - Peer diagnostics and wallet feature-state reporting
-- Receive-side copy flow, selected-address panel, and QR rendering
-- Transaction detail panel and backup/export scaffolding
+- Receive-side copy flow, selected-address panel, QR rendering, and QR download
+- Transaction detail panel with selection state
+- Guarded send / backup / label API contracts exposed as explicit backend stubs
+- Backup/export and address-label scaffolding
 - Send/write actions intentionally disabled for now
 
 ## Environment
