@@ -62,6 +62,26 @@ function StatusPill({ children, color = '#8aa2c8', background = 'rgba(138,162,20
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background, color, fontWeight: 700, fontSize: 12 }}>{children}</span>
 }
 
+function ActionButton({ children, disabled = false, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: '9px 12px',
+        borderRadius: 10,
+        border: disabled ? '1px solid #4a505c' : '1px solid #53698a',
+        background: disabled ? '#16191f' : '#202a38',
+        color: disabled ? '#7f8896' : '#ecf2ff',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        fontWeight: 700,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
 function formatAmount(value) {
   if (value === null || value === undefined || value === '') return '—'
   const num = Number(value)
@@ -86,8 +106,9 @@ function addressCount(received = []) {
   return Array.isArray(received) ? received.length : 0
 }
 
-function featureTone(enabled) {
-  return enabled ? 'ok' : 'warning'
+function shortAddress(value) {
+  if (!value) return '—'
+  return value.length > 18 ? `${value.slice(0, 10)}…${value.slice(-8)}` : value
 }
 
 function NavTabs({ active, onChange }) {
@@ -97,6 +118,7 @@ function NavTabs({ active, onChange }) {
     ['send', 'Send'],
     ['transactions', 'Transactions'],
     ['addresses', 'Address Book'],
+    ['backup', 'Backup'],
     ['debug', 'Debug'],
   ]
   return (
@@ -122,6 +144,34 @@ function NavTabs({ active, onChange }) {
   )
 }
 
+function ReceiveCard({ item, selected, onSelect, copied, onCopy }) {
+  const txCount = Array.isArray(item.txids) ? item.txids.length : (item.confirmations ?? '—')
+  return (
+    <div style={{ padding: 14, borderRadius: 12, border: selected ? '1px solid #5a7ab6' : '1px solid #343942', background: selected ? '#1a2330' : '#181b20' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Receive address</div>
+          <div style={{ color: '#aeb7c4', fontSize: 13 }}>{shortAddress(item.address)}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontWeight: 700 }}>{formatAmount(item.amount)}</div>
+          <div style={{ color: '#aeb7c4', fontSize: 13 }}>Tx count: {txCount}</div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: '#111419', border: '1px solid #2d323c', fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>
+        {item.address || 'unknown address'}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+        <ActionButton onClick={() => onSelect(item.address)}>{selected ? 'Selected' : 'View details'}</ActionButton>
+        <ActionButton onClick={() => onCopy(item.address)}>{copied ? 'Copied' : 'Copy address'}</ActionButton>
+        <ActionButton disabled>Show QR soon</ActionButton>
+      </div>
+    </div>
+  )
+}
+
 function AppInner() {
   const [health, setHealth] = useState(null)
   const [nodeState, setNodeState] = useState(null)
@@ -130,6 +180,8 @@ function AppInner() {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [selectedTx, setSelectedTx] = useState('all')
   const [activeTab, setActiveTab] = useState('overview')
+  const [selectedAddress, setSelectedAddress] = useState('')
+  const [copiedAddress, setCopiedAddress] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -183,9 +235,32 @@ function AppInner() {
     return items.filter((tx) => tx.category === selectedTx)
   }, [summary?.transactions, selectedTx])
 
+  const received = Array.isArray(summary?.received) ? summary.received : []
+  const selectedReceive = received.find((item) => item.address === selectedAddress) || received[0] || null
+
+  useEffect(() => {
+    if (!selectedAddress && received[0]?.address) {
+      setSelectedAddress(received[0].address)
+    }
+  }, [selectedAddress, received])
+
   const walletMode = summary?.rpcReady ? 'read-only live wallet' : 'read-only warmup mode'
   const canonical = summary?.canonical || { enabled: false }
   const featureFlags = summary?.featureFlags || {}
+
+  async function handleCopyAddress(address) {
+    if (!address) return
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(address)
+        setCopiedAddress(address)
+        setTimeout(() => setCopiedAddress(''), 2000)
+      }
+    } catch {
+      setCopiedAddress(address)
+      setTimeout(() => setCopiedAddress(''), 2000)
+    }
+  }
 
   const overviewPanel = (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -201,7 +276,7 @@ function AppInner() {
           <div style={{ color: '#aeb7c4', marginTop: 4 }}>Updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}</div>
         </Card>
         <Card title="Receive addresses">
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{addressCount(summary?.received)}</div>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>{addressCount(received)}</div>
           <div style={{ color: '#aeb7c4', marginTop: 8 }}>Visible in read-only mode</div>
         </Card>
         <Card title="Transactions">
@@ -248,19 +323,51 @@ function AppInner() {
   )
 
   const receivePanel = (
-    <Card title="Receive TRI" subtitle="Safe receive-side wallet visibility">
-      <div style={{ display: 'grid', gap: 10 }}>
-        {Array.isArray(summary?.received) && summary.received.length ? summary.received.map((item, index) => (
-          <div key={`${item.address}-${index}`} style={{ padding: 12, borderRadius: 10, border: '1px solid #343942', background: '#181b20' }}>
-            <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all', color: '#eef2f7' }}>{item.address || 'unknown address'}</div>
-            <div style={{ marginTop: 8, color: '#aeb7c4', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <span>Amount: {formatAmount(item.amount)}</span>
-              <span>Tx count: {item.txids?.length ?? item.confirmations ?? '—'}</span>
+    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 16 }}>
+      <Card title="Receive TRI" subtitle="Copy-ready receive cards and address details">
+        <div style={{ display: 'grid', gap: 12 }}>
+          {received.length ? received.map((item, index) => (
+            <ReceiveCard
+              key={`${item.address}-${index}`}
+              item={item}
+              selected={selectedReceive?.address === item.address}
+              onSelect={setSelectedAddress}
+              copied={copiedAddress === item.address}
+              onCopy={handleCopyAddress}
+            />
+          )) : <div style={{ color: '#aeb7c4' }}>No receive-address data yet. If RPC is warming up, this will fill in automatically.</div>}
+        </div>
+      </Card>
+
+      <div style={{ display: 'grid', gap: 16 }}>
+        <Card title="Selected address" subtitle="Focused receive detail panel" tone="ok">
+          {selectedReceive ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <InfoRow label="Address" value={shortAddress(selectedReceive.address)} mono />
+              <InfoRow label="Total received" value={formatAmount(selectedReceive.amount)} />
+              <InfoRow label="Known txids" value={Array.isArray(selectedReceive.txids) ? selectedReceive.txids.length : '—'} />
+              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: '#111419', border: '1px solid #2d323c', minHeight: 160, display: 'grid', placeItems: 'center', color: '#aeb7c4' }}>
+                QR panel placeholder
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <ActionButton onClick={() => handleCopyAddress(selectedReceive.address)}>{copiedAddress === selectedReceive.address ? 'Copied' : 'Copy full address'}</ActionButton>
+                <ActionButton disabled>Save QR</ActionButton>
+              </div>
             </div>
+          ) : <div style={{ color: '#aeb7c4' }}>Pick a receive address to inspect it here.</div>}
+        </Card>
+
+        <Card title="Receive roadmap" subtitle="Next useful receive-side improvements">
+          <div style={{ display: 'grid', gap: 8 }}>
+            <InfoRow label="Copy address" value="live" />
+            <InfoRow label="Receive details" value="live" />
+            <InfoRow label="QR rendering" value="next" />
+            <InfoRow label="Address labels" value="planned" />
+            <InfoRow label="Generate new address" value="blocked until guarded write path exists" />
           </div>
-        )) : <div style={{ color: '#aeb7c4' }}>No receive-address data yet. If RPC is warming up, this will fill in automatically.</div>}
+        </Card>
       </div>
-    </Card>
+    </div>
   )
 
   const sendPanel = (
@@ -322,7 +429,7 @@ function AppInner() {
     <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr', gap: 16 }}>
       <Card title="Address book" subtitle="Wallet address management surface">
         <div style={{ display: 'grid', gap: 10 }}>
-          {Array.isArray(summary?.received) && summary.received.length ? summary.received.map((item, index) => (
+          {received.length ? received.map((item, index) => (
             <div key={`${item.address}-book-${index}`} style={{ padding: 12, borderRadius: 10, border: '1px solid #343942', background: '#181b20' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                 <strong>Wallet address</strong>
@@ -338,8 +445,28 @@ function AppInner() {
         <div style={{ display: 'grid', gap: 8 }}>
           <InfoRow label="Generate new address" value="planned, blocked until guarded write path exists" />
           <InfoRow label="Label address" value="planned" />
-          <InfoRow label="Copy / QR" value="planned" />
+          <InfoRow label="Copy / QR" value="partly live" />
           <InfoRow label="Import / export labels" value="planned" />
+        </div>
+      </Card>
+    </div>
+  )
+
+  const backupPanel = (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr', gap: 16 }}>
+      <Card title="Backup / export" subtitle="Shape the wallet-grade safety layer before enabling writes">
+        <div style={{ display: 'grid', gap: 8 }}>
+          <InfoRow label="Export wallet backup" value="planned" />
+          <InfoRow label="Backup location" value="planned dedicated path" />
+          <InfoRow label="Backup freshness" value="planned" />
+          <InfoRow label="Recovery verification" value="planned" />
+          <InfoRow label="Unsafe raw wallet file handling" value="forbidden from UI" />
+        </div>
+      </Card>
+
+      <Card title="Why this matters" subtitle="Write support should only arrive after recovery is credible" tone="accent">
+        <div style={{ color: '#c6cfda', lineHeight: 1.6 }}>
+          Before send, generate-address, or unlock flows become real, the wallet needs a trustworthy backup/export story. That means explicit backup surfaces, clear recovery expectations, and no pretending around wallet safety.
         </div>
       </Card>
     </div>
@@ -403,6 +530,7 @@ function AppInner() {
     send: sendPanel,
     transactions: transactionsPanel,
     addresses: addressesPanel,
+    backup: backupPanel,
     debug: debugPanel,
   }
 
