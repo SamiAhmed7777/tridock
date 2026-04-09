@@ -75,6 +75,11 @@ function ActionButton({ children, disabled = false, onClick, tone = 'default' })
       background: disabled ? '#1a1416' : '#2b181d',
       color: disabled ? '#987f84' : '#ffdbe1',
     },
+    ok: {
+      border: disabled ? '1px solid #44534a' : '1px solid #3b7a56',
+      background: disabled ? '#171c19' : '#193123',
+      color: disabled ? '#859189' : '#d7ffe7',
+    },
   }
   const style = styles[tone] || styles.default
   return (
@@ -94,11 +99,11 @@ function ActionButton({ children, disabled = false, onClick, tone = 'default' })
   )
 }
 
-function Field({ label, placeholder, disabled = true, value = '', onChange }) {
+function Field({ label, placeholder, disabled = true, value = '', onChange, type = 'text' }) {
   return (
     <div>
       <div style={{ color: '#aeb7c4', marginBottom: 6 }}>{label}</div>
-      <input disabled={disabled} value={value} onChange={onChange} placeholder={placeholder} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: disabled ? '#8c96a5' : '#eef2f7' }} />
+      <input type={type} disabled={disabled} value={value} onChange={onChange} placeholder={placeholder} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: disabled ? '#8c96a5' : '#eef2f7' }} />
     </div>
   )
 }
@@ -190,7 +195,7 @@ function ReceiveCard({ item, selected, onSelect, copied, onCopy }) {
     <div style={{ padding: 14, borderRadius: 12, border: selected ? '1px solid #5a7ab6' : '1px solid #343942', background: selected ? '#1a2330' : '#181b20' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Receive address</div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>{item.walletMeta?.label || 'Receive address'}</div>
           <div style={{ color: '#aeb7c4', fontSize: 13 }}>{shortAddress(item.address)}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -198,6 +203,8 @@ function ReceiveCard({ item, selected, onSelect, copied, onCopy }) {
           <div style={{ color: '#aeb7c4', fontSize: 13 }}>Tx count: {txCount}</div>
         </div>
       </div>
+
+      {item.walletMeta?.note ? <div style={{ marginTop: 10, color: '#c7d0dc', fontSize: 13 }}>{item.walletMeta.note}</div> : null}
 
       <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: '#111419', border: '1px solid #2d323c', fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>
         {item.address || 'unknown address'}
@@ -230,6 +237,7 @@ export default function App() {
   const [nodeState, setNodeState] = useState(null)
   const [summary, setSummary] = useState(null)
   const [contracts, setContracts] = useState(null)
+  const [labels, setLabels] = useState({})
   const [summaryError, setSummaryError] = useState('')
   const [lastUpdated, setLastUpdated] = useState(null)
   const [selectedTx, setSelectedTx] = useState('all')
@@ -240,31 +248,39 @@ export default function App() {
   const [qrDataUrl, setQrDataUrl] = useState('')
   const [labelDrafts, setLabelDrafts] = useState({})
   const [noteDrafts, setNoteDrafts] = useState({})
+  const [sendForm, setSendForm] = useState({ address: '', amount: '', memo: '' })
   const [sendPreviewStatus, setSendPreviewStatus] = useState('')
+  const [sendPreviewData, setSendPreviewData] = useState(null)
   const [backupStatus, setBackupStatus] = useState('')
+  const [backupData, setBackupData] = useState(null)
+  const [newAddressLabel, setNewAddressLabel] = useState('')
+  const [addressGenStatus, setAddressGenStatus] = useState('')
 
   useEffect(() => {
     let cancelled = false
 
     async function load() {
       try {
-        const [healthRes, stateRes, summaryRes, contractsRes] = await Promise.all([
+        const [healthRes, stateRes, summaryRes, contractsRes, labelsRes] = await Promise.all([
           fetch('/api/health'),
           fetch('/api/node/state'),
           fetch('/api/wallet/summary'),
           fetch('/api/wallet/contracts'),
+          fetch('/api/wallet/labels'),
         ])
 
         const healthData = await healthRes.json().catch(() => null)
         const stateData = await stateRes.json().catch(() => null)
         const summaryData = await summaryRes.json().catch(() => null)
         const contractsData = await contractsRes.json().catch(() => null)
+        const labelsData = await labelsRes.json().catch(() => null)
 
         if (cancelled) return
 
         setHealth(healthData)
         setNodeState(stateData)
         setContracts(contractsData)
+        setLabels(labelsData?.labels || {})
         setLastUpdated(new Date())
 
         if (summaryData) {
@@ -302,16 +318,19 @@ export default function App() {
   const selectedReceive = received.find((item) => item.address === selectedAddress) || received[0] || null
 
   useEffect(() => {
-    if (!selectedAddress && received[0]?.address) {
-      setSelectedAddress(received[0].address)
-    }
+    if (!selectedAddress && received[0]?.address) setSelectedAddress(received[0].address)
   }, [selectedAddress, received])
 
   useEffect(() => {
-    if (!selectedTransaction && txs[0]) {
-      setSelectedTransaction(txs[0])
-    }
+    if (!selectedTransaction && txs[0]) setSelectedTransaction(txs[0])
   }, [selectedTransaction, txs])
+
+  useEffect(() => {
+    if (selectedReceive?.address) {
+      setLabelDrafts((prev) => ({ ...prev, [selectedReceive.address]: prev[selectedReceive.address] ?? selectedReceive.walletMeta?.label ?? labels[selectedReceive.address]?.label ?? '' }))
+      setNoteDrafts((prev) => ({ ...prev, [selectedReceive.address]: prev[selectedReceive.address] ?? selectedReceive.walletMeta?.note ?? labels[selectedReceive.address]?.note ?? '' }))
+    }
+  }, [selectedReceive, labels])
 
   useEffect(() => {
     let cancelled = false
@@ -324,10 +343,7 @@ export default function App() {
         const url = await QRCode.toDataURL(selectedReceive.address, {
           margin: 1,
           width: 220,
-          color: {
-            dark: '#f1f5fb',
-            light: '#111419',
-          },
+          color: { dark: '#f1f5fb', light: '#111419' },
         })
         if (!cancelled) setQrDataUrl(url)
       } catch {
@@ -335,12 +351,10 @@ export default function App() {
       }
     }
     buildQr()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [selectedReceive?.address])
 
-  const walletMode = summary?.rpcReady ? 'read-only live wallet' : 'read-only warmup mode'
+  const walletMode = summary?.rpcReady ? 'live wallet shell' : 'warmup mode'
   const canonical = summary?.canonical || { enabled: false }
   const featureFlags = summary?.featureFlags || {}
 
@@ -358,23 +372,74 @@ export default function App() {
     }
   }
 
+  async function refreshLabels() {
+    const res = await fetch('/api/wallet/labels')
+    const data = await res.json()
+    setLabels(data.labels || {})
+  }
+
+  async function handleSaveLabel(address) {
+    const res = await fetch('/api/wallet/labels/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        address,
+        label: labelDrafts[address] || '',
+        note: noteDrafts[address] || '',
+      }),
+    })
+    const data = await res.json().catch(() => null)
+    setBackupStatus(data?.message || (data?.ok ? 'Label saved.' : 'Label save failed.'))
+    await refreshLabels()
+  }
+
   async function handlePreviewSend() {
     try {
-      const res = await fetch('/api/wallet/send/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const res = await fetch('/api/wallet/send/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sendForm),
+      })
       const data = await res.json().catch(() => null)
-      setSendPreviewStatus(data?.message || `Preview unavailable (${res.status})`)
+      setSendPreviewStatus(data?.message || (data?.ok ? 'Preview ready.' : `Preview unavailable (${res.status})`))
+      setSendPreviewData(data?.preview || null)
     } catch (error) {
       setSendPreviewStatus(error?.message || 'Preview unavailable')
+      setSendPreviewData(null)
     }
   }
 
   async function handleBackupAction() {
     try {
-      const res = await fetch('/api/wallet/backup/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+      const res = await fetch('/api/wallet/backup/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestedName: 'tri-wallet-backup' }),
+      })
       const data = await res.json().catch(() => null)
-      setBackupStatus(data?.message || `Backup unavailable (${res.status})`)
+      setBackupStatus(data?.message || (data?.ok ? 'Backup export created.' : `Backup unavailable (${res.status})`))
+      setBackupData(data?.export || null)
     } catch (error) {
       setBackupStatus(error?.message || 'Backup unavailable')
+      setBackupData(null)
+    }
+  }
+
+  async function handleGenerateAddress() {
+    try {
+      const res = await fetch('/api/wallet/address/new', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: newAddressLabel }),
+      })
+      const data = await res.json().catch(() => null)
+      setAddressGenStatus(data?.message || (data?.ok ? `New address created: ${data.address}` : `Address generation unavailable (${res.status})`))
+      if (data?.ok) {
+        setNewAddressLabel('')
+        await refreshLabels()
+      }
+    } catch (error) {
+      setAddressGenStatus(error?.message || 'Address generation unavailable')
     }
   }
 
@@ -393,7 +458,7 @@ export default function App() {
         </Card>
         <Card title="Receive addresses">
           <div style={{ fontSize: 28, fontWeight: 800 }}>{addressCount(received)}</div>
-          <div style={{ color: '#aeb7c4', marginTop: 8 }}>Visible in read-only mode</div>
+          <div style={{ color: '#aeb7c4', marginTop: 8 }}>Visible in wallet shell</div>
         </Card>
         <Card title="Transactions">
           <div style={{ fontSize: 28, fontWeight: 800 }}>{Array.isArray(summary?.transactions) ? summary.transactions.length : 0}</div>
@@ -411,36 +476,12 @@ export default function App() {
           <InfoRow label="Canonical status" value={nodeState?.canonicalStatus || 'disabled'} />
         </div>
       </Card>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr .85fr', gap: 16 }}>
-        <Card title="Wallet overview" subtitle="Real wallet fields exposed now; write actions stay blocked until safeguards are built">
-          <div style={{ display: 'grid', gap: 8 }}>
-            <InfoRow label="RPC state" value={summary?.rpcReady ? 'connected' : 'warming up'} />
-            <InfoRow label="Network" value={summary?.network || '—'} />
-            <InfoRow label="Version" value={summary?.version ?? '—'} />
-            <InfoRow label="Protocol version" value={summary?.protocolversion ?? '—'} />
-            <InfoRow label="Wallet version" value={summary?.walletversion ?? '—'} />
-            <InfoRow label="Best block" value={formatHash(summary?.bestblock || nodeState?.localBestblock)} mono />
-          </div>
-        </Card>
-
-        <Card title="Staking" subtitle="Expose the full staking posture, even if this node is configured non-staking">
-          <div style={{ display: 'grid', gap: 8 }}>
-            <InfoRow label="Enabled" value={summary?.staking?.enabled ? 'yes' : 'no'} />
-            <InfoRow label="Currently staking" value={summary?.staking?.staking ? 'yes' : 'no'} />
-            <InfoRow label="Weight" value={summary?.staking?.weight ?? '—'} />
-            <InfoRow label="Net stake weight" value={summary?.staking?.netstakeweight ?? '—'} />
-            <InfoRow label="Expected time" value={summary?.staking?.expectedtime ?? '—'} />
-            <InfoRow label="Errors" value={summary?.staking?.errors || 'none'} />
-          </div>
-        </Card>
-      </div>
     </div>
   )
 
   const receivePanel = (
     <div style={{ display: 'grid', gridTemplateColumns: '1.2fr .8fr', gap: 16 }}>
-      <Card title="Receive TRI" subtitle="Copy-ready receive cards and address details">
+      <Card title="Receive TRI" subtitle="Copy-ready receive cards with labels and notes">
         <div style={{ display: 'grid', gap: 12 }}>
           {received.length ? received.map((item, index) => (
             <ReceiveCard
@@ -462,25 +503,25 @@ export default function App() {
               <InfoRow label="Address" value={shortAddress(selectedReceive.address)} mono />
               <InfoRow label="Total received" value={formatAmount(selectedReceive.amount)} />
               <InfoRow label="Known txids" value={Array.isArray(selectedReceive.txids) ? selectedReceive.txids.length : '—'} />
+              <Field label="Label" disabled={false} value={labelDrafts[selectedReceive.address] || ''} onChange={(e) => setLabelDrafts((prev) => ({ ...prev, [selectedReceive.address]: e.target.value }))} placeholder="Friendly label" />
+              <TextArea label="Note" value={noteDrafts[selectedReceive.address] || ''} onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [selectedReceive.address]: e.target.value }))} placeholder="What this address is for" />
               <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: '#111419', border: '1px solid #2d323c', minHeight: 160, display: 'grid', placeItems: 'center' }}>
                 {qrDataUrl ? <img src={qrDataUrl} alt="Receive address QR code" style={{ width: 220, height: 220, objectFit: 'contain', imageRendering: 'pixelated' }} /> : <div style={{ color: '#aeb7c4' }}>Generating QR…</div>}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <ActionButton onClick={() => handleCopyAddress(selectedReceive.address)}>{copiedAddress === selectedReceive.address ? 'Copied' : 'Copy full address'}</ActionButton>
                 <ActionButton disabled={!qrDataUrl} onClick={() => downloadDataUrl(qrDataUrl, `tri-${selectedReceive.address}.png`)}>Download QR</ActionButton>
+                <ActionButton tone="ok" onClick={() => handleSaveLabel(selectedReceive.address)}>Save label + note</ActionButton>
               </div>
             </div>
           ) : <div style={{ color: '#aeb7c4' }}>Pick a receive address to inspect it here.</div>}
         </Card>
 
-        <Card title="Receive roadmap" subtitle="Next useful receive-side improvements">
-          <div style={{ display: 'grid', gap: 8 }}>
-            <InfoRow label="Copy address" value="live" />
-            <InfoRow label="Receive details" value="live" />
-            <InfoRow label="QR rendering" value="live" />
-            <InfoRow label="QR download" value="live" />
-            <InfoRow label="Address labels" value="scaffolded" />
-            <InfoRow label="Generate new address" value="blocked until guarded write path exists" />
+        <Card title="Generate address" subtitle="Guarded new-address creation">
+          <div style={{ display: 'grid', gap: 10 }}>
+            <Field label="New address label" disabled={false} value={newAddressLabel} onChange={(e) => setNewAddressLabel(e.target.value)} placeholder="Savings, exchange, cold, etc." />
+            <ActionButton onClick={handleGenerateAddress} disabled={!contracts?.addressGeneration?.available}>Generate new address</ActionButton>
+            {addressGenStatus ? <div style={{ color: '#cdd6e2' }}>{addressGenStatus}</div> : null}
           </div>
         </Card>
       </div>
@@ -489,40 +530,29 @@ export default function App() {
 
   const sendPanel = (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr', gap: 16 }}>
-      <Card title="Send TRI" subtitle="Real send UX shape, but still hard-blocked until guarded write support exists" tone="warning">
+      <Card title="Send TRI" subtitle="Real preview and validation now, still no broadcast button" tone="warning">
         <div style={{ display: 'grid', gap: 12 }}>
-          <Field label="Destination address" placeholder="Send is disabled for now" />
-          <Field label="Amount" placeholder="0.00 TRI" />
-          <Field label="Memo / label" placeholder="Optional note" />
-          <Field label="Fee estimate" placeholder="Will appear once guarded send is implemented" />
+          <Field label="Destination address" disabled={false} value={sendForm.address} onChange={(e) => setSendForm((prev) => ({ ...prev, address: e.target.value }))} placeholder="TRI destination address" />
+          <Field label="Amount" type="number" disabled={false} value={sendForm.amount} onChange={(e) => setSendForm((prev) => ({ ...prev, amount: e.target.value }))} placeholder="0.00 TRI" />
+          <Field label="Memo / label" disabled={false} value={sendForm.memo} onChange={(e) => setSendForm((prev) => ({ ...prev, memo: e.target.value }))} placeholder="Optional note" />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <ActionButton tone="warning" disabled>Send disabled until guarded wallet writes exist</ActionButton>
-            <ActionButton onClick={handlePreviewSend}>Preview contract</ActionButton>
+            <ActionButton onClick={handlePreviewSend}>Preview send</ActionButton>
+            <ActionButton tone="warning" disabled>Broadcast still gated</ActionButton>
           </div>
           {sendPreviewStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{sendPreviewStatus}</div> : null}
         </div>
       </Card>
 
-      <div style={{ display: 'grid', gap: 16 }}>
-        <Card title="Write-safety gates" subtitle="What has to exist before send becomes real">
-          <div style={{ display: 'grid', gap: 8 }}>
-            <InfoRow label="Dedicated wallet path" value="required" />
-            <InfoRow label="Backup/export path" value="required" />
-            <InfoRow label="Unlock/lock safety" value="required" />
-            <InfoRow label="Transaction confirmation UX" value="required" />
-            <InfoRow label="Explicit approval around wallet.dat-risk" value="required" />
-          </div>
-        </Card>
-
-        <Card title="Planned send flow" subtitle="How this should eventually work" tone="accent">
-          <div style={{ display: 'grid', gap: 8 }}>
-            <InfoRow label="Compose" value="planned" />
-            <InfoRow label="Preview / fee check" value="contract exposed" />
-            <InfoRow label="Final confirmation" value="planned" />
-            <InfoRow label="Broadcast result" value="planned" />
-          </div>
-        </Card>
-      </div>
+      <Card title="Send preview" subtitle="Validation and fee estimate">
+        <div style={{ display: 'grid', gap: 8 }}>
+          <InfoRow label="Address valid" value={sendPreviewData ? (sendPreviewData.validAddress ? 'yes' : 'no') : '—'} />
+          <InfoRow label="Spendable balance" value={sendPreviewData ? formatAmount(sendPreviewData.spendableBalance) : '—'} />
+          <InfoRow label="Estimated fee" value={sendPreviewData ? formatAmount(sendPreviewData.estimatedFee) : '—'} />
+          <InfoRow label="Estimated total" value={sendPreviewData ? formatAmount(sendPreviewData.estimatedTotal) : '—'} />
+          <InfoRow label="Exceeds balance" value={sendPreviewData ? (sendPreviewData.wouldExceedBalance ? 'yes' : 'no') : '—'} />
+          <InfoRow label="Can broadcast" value={sendPreviewData ? (sendPreviewData.canBroadcast ? 'yes, if explicitly allowed' : 'not yet') : '—'} />
+        </div>
+      </Card>
     </div>
   )
 
@@ -551,9 +581,6 @@ export default function App() {
             <InfoRow label="Address" value={shortAddress(selectedTransaction.address)} mono />
             <InfoRow label="TXID" value={formatHash(selectedTransaction.txid)} mono />
             <InfoRow label="Raw address" value={selectedTransaction.address || '—'} mono />
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <ActionButton onClick={() => handleCopyAddress(selectedTransaction.address || selectedTransaction.txid)}>{copiedAddress === (selectedTransaction.address || selectedTransaction.txid) ? 'Copied' : 'Copy address / txid'}</ActionButton>
-            </div>
           </div>
         ) : <div style={{ color: '#aeb7c4' }}>Click a transaction on the left to open its detail view.</div>}
       </Card>
@@ -562,36 +589,29 @@ export default function App() {
 
   const addressesPanel = (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr', gap: 16 }}>
-      <Card title="Address book" subtitle="Wallet address management surface">
+      <Card title="Address book" subtitle="Persisted labels and notes">
         <div style={{ display: 'grid', gap: 10 }}>
           {received.length ? received.map((item, index) => (
             <div key={`${item.address}-book-${index}`} style={{ padding: 12, borderRadius: 10, border: '1px solid #343942', background: '#181b20' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                <strong>Wallet address</strong>
+                <strong>{labels[item.address]?.label || item.walletMeta?.label || 'Wallet address'}</strong>
                 <span style={{ color: '#aeb7c4' }}>{formatAmount(item.amount)}</span>
               </div>
               <div style={{ marginTop: 8, fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>{item.address}</div>
-              <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
-                <Field label="Label" disabled={false} value={labelDrafts[item.address] || ''} onChange={(e) => setLabelDrafts((prev) => ({ ...prev, [item.address]: e.target.value }))} placeholder="Friendly label" />
-                <TextArea label="Note" value={noteDrafts[item.address] || ''} onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [item.address]: e.target.value }))} placeholder="Address note or purpose" />
-              </div>
+              {(labels[item.address]?.note || item.walletMeta?.note) ? <div style={{ marginTop: 8, color: '#c7d0dc' }}>{labels[item.address]?.note || item.walletMeta?.note}</div> : null}
               <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
                 <ActionButton onClick={() => handleCopyAddress(item.address)}>{copiedAddress === item.address ? 'Copied' : 'Copy'}</ActionButton>
-                <ActionButton disabled={!contracts?.labels} onClick={async () => {
-                  const res = await fetch('/api/wallet/labels/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: item.address, label: labelDrafts[item.address] || '', note: noteDrafts[item.address] || '' }) })
-                  const data = await res.json().catch(() => null)
-                  setBackupStatus(data?.message || 'Labels contract unavailable')
-                }}>Save contract</ActionButton>
+                <ActionButton onClick={() => { setActiveTab('receive'); setSelectedAddress(item.address) }}>Edit</ActionButton>
               </div>
             </div>
           )) : <div style={{ color: '#aeb7c4' }}>Address book will populate from wallet receive data when RPC is ready.</div>}
         </div>
       </Card>
 
-      <Card title="Address actions" subtitle="Planned next layer" tone="warning">
+      <Card title="Address actions" subtitle="Safe progression toward wallet-grade behavior" tone="warning">
         <div style={{ display: 'grid', gap: 8 }}>
-          <InfoRow label="Generate new address" value="planned, blocked until guarded write path exists" />
-          <InfoRow label="Label address" value="UI scaffold + API contract" />
+          <InfoRow label="Generate new address" value={contracts?.addressGeneration?.available ? 'guarded live' : 'blocked'} />
+          <InfoRow label="Label address" value="live" />
           <InfoRow label="Copy / QR" value="live" />
           <InfoRow label="Import / export labels" value="planned" />
         </div>
@@ -601,29 +621,29 @@ export default function App() {
 
   const backupPanel = (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr', gap: 16 }}>
-      <Card title="Backup / export" subtitle="Shape the wallet-grade safety layer before enabling writes">
+      <Card title="Backup / export" subtitle="Real export hook if a wallet export path is configured">
         <div style={{ display: 'grid', gap: 12 }}>
-          <InfoRow label="Export wallet backup" value="planned" />
-          <InfoRow label="Backup location" value="planned dedicated path" />
-          <InfoRow label="Backup freshness" value="planned" />
-          <InfoRow label="Recovery verification" value="planned" />
-          <InfoRow label="Unsafe raw wallet file handling" value="forbidden from UI" />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Field label="Target backup path" placeholder="/var/backups/tri-wallet" />
-            <Field label="Last verified backup" placeholder="Not available yet" />
-          </div>
+          <InfoRow label="Export configured" value={contracts?.backup?.available ? 'yes' : 'no'} />
+          <InfoRow label="Write ops enabled" value={health?.writeOpsEnabled ? 'yes' : 'no'} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <ActionButton onClick={handleBackupAction}>Create backup contract</ActionButton>
-            <ActionButton disabled>Export wallet package</ActionButton>
+            <ActionButton onClick={handleBackupAction}>Create backup export</ActionButton>
             <ActionButton disabled>Verify restore package</ActionButton>
           </div>
           {backupStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{backupStatus}</div> : null}
+          {backupData ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <InfoRow label="Filename" value={backupData.filename} mono />
+              <InfoRow label="Bytes" value={String(backupData.bytes)} />
+              <InfoRow label="SHA256" value={formatHash(backupData.sha256)} mono />
+              <InfoRow label="Created" value={backupData.createdAt} />
+            </div>
+          ) : null}
         </div>
       </Card>
 
-      <Card title="Why this matters" subtitle="Write support should only arrive after recovery is credible" tone="accent">
+      <Card title="Why this matters" subtitle="Recovery credibility before dangerous wallet actions" tone="accent">
         <div style={{ color: '#c6cfda', lineHeight: 1.6 }}>
-          Before send, generate-address, or unlock flows become real, the wallet needs a trustworthy backup/export story. That means explicit backup surfaces, clear recovery expectations, and no pretending around wallet safety.
+          Backup/export is now wired to a real file-copy path when configured, but it still needs restore verification before it should be treated as enough for dangerous wallet actions.
         </div>
       </Card>
     </div>
@@ -641,40 +661,12 @@ export default function App() {
         </div>
       </Card>
 
-      <Card title="Peers / runtime" subtitle="Useful when the network is dirty or forked">
-        <div style={{ display: 'grid', gap: 10 }}>
-          <InfoRow label="Peer count" value={summary?.peerCount ?? '—'} />
-          <InfoRow label="Node status" value={nodeState?.status || 'unknown'} />
-          <InfoRow label="Node reason" value={nodeState?.reason || '—'} />
-          <div style={{ display: 'grid', gap: 8 }}>
-            {Array.isArray(summary?.peers) && summary.peers.length ? summary.peers.map((peer, index) => (
-              <div key={`${peer.addr}-${index}`} style={{ padding: 10, borderRadius: 10, border: '1px solid #343942', background: '#181b20' }}>
-                <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>{peer.addr || 'unknown peer'}</div>
-                <div style={{ marginTop: 6, color: '#aeb7c4' }}>{peer.subver || 'unknown subver'} · start {peer.startingheight ?? '—'} · {peer.inbound ? 'inbound' : 'outbound'}</div>
-              </div>
-            )) : <div style={{ color: '#aeb7c4' }}>No peer data yet.</div>}
-          </div>
-        </div>
-      </Card>
-
-      <Card title="Feature rollout" subtitle="Keep the product honest about what is real versus still gated" tone="accent">
+      <Card title="Action contracts" subtitle="Backend is now carrying real state and guarded capabilities">
         <div style={{ display: 'grid', gap: 8 }}>
-          <InfoRow label="Overview" value={featureFlags.overview ? 'live' : 'off'} />
-          <InfoRow label="Receive" value={featureFlags.receive ? 'live' : 'warming up'} />
-          <InfoRow label="Transactions" value={featureFlags.transactions ? 'live' : 'warming up'} />
-          <InfoRow label="Staking" value={featureFlags.staking ? 'live' : 'off'} />
-          <InfoRow label="Peers" value={featureFlags.peers ? 'live' : 'warming up'} />
-          <InfoRow label="Send" value={featureFlags.send ? 'live' : 'blocked'} />
-          <InfoRow label="Address book" value={featureFlags.addressBook ? 'live' : 'planned'} />
-          <InfoRow label="Backup/export" value={featureFlags.backupExport ? 'live' : 'planned'} />
-        </div>
-      </Card>
-
-      <Card title="Action contracts" subtitle="Backend stubs now describe the guarded write surface">
-        <div style={{ display: 'grid', gap: 8 }}>
-          <InfoRow label="Send preview" value={contracts?.send?.available ? 'available' : 'contract only'} />
-          <InfoRow label="Backup export" value={contracts?.backup?.available ? 'available' : 'contract only'} />
-          <InfoRow label="Address labels" value={contracts?.labels?.available ? 'available' : 'contract only'} />
+          <InfoRow label="Send preview" value={featureFlags.sendPreview ? 'live' : 'off'} />
+          <InfoRow label="Labels" value={contracts?.labels?.available ? 'live' : 'off'} />
+          <InfoRow label="Address generation" value={contracts?.addressGeneration?.available ? 'guarded live' : 'blocked'} />
+          <InfoRow label="Backup export" value={contracts?.backup?.available ? 'guarded live' : 'not configured'} />
           <InfoRow label="wallet.dat" value="still protected" />
         </div>
       </Card>
@@ -701,12 +693,13 @@ export default function App() {
                 <img src={triLogo} alt="Triangles logo" style={{ height: 42, width: 'auto', display: 'block', filter: 'drop-shadow(0 8px 18px rgba(0,0,0,.35))' }} />
                 <div>
                   <div style={{ fontSize: 22, fontWeight: 700 }}>TRIdock Web Wallet</div>
-                  <div style={{ color: '#aeb7c4', marginTop: 4 }}>Building toward a full TRI wallet while keeping dangerous writes gated</div>
+                  <div style={{ color: '#aeb7c4', marginTop: 4 }}>Moving from read-only shell toward a functioning guarded wallet node</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <StatusPill>{walletMode}</StatusPill>
                 <StatusPill color="#ffd38a" background="rgba(255,211,138,.12)">{nodeState?.status || 'unknown node state'}</StatusPill>
+                {health?.writeOpsEnabled ? <StatusPill color="#8df0b1" background="rgba(97,214,128,.12)">guarded writes enabled</StatusPill> : null}
                 {canonical?.enabled ? (
                   <StatusPill color={canonical.matched ? '#8df0b1' : '#ffb3b3'} background={canonical.matched ? 'rgba(97,214,128,.12)' : 'rgba(255,125,125,.14)'}>
                     {canonical.matched ? 'canonical match' : 'canonical mismatch'}
@@ -719,12 +712,7 @@ export default function App() {
           <div style={{ padding: 18 }}>
             <NavTabs active={activeTab} onChange={setActiveTab} />
             {panelByTab[activeTab]}
-
-            {summaryError ? (
-              <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: '#23161a', border: '1px solid #6a3943', color: '#ffd7de' }}>
-                <strong>RPC note:</strong> {summaryError}
-              </div>
-            ) : null}
+            {summaryError ? <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: '#23161a', border: '1px solid #6a3943', color: '#ffd7de' }}><strong>RPC note:</strong> {summaryError}</div> : null}
           </div>
         </div>
       </div>

@@ -4,15 +4,15 @@ Qt-inspired web wallet UI for TRI, designed to sit safely in front of a TRIdock 
 
 ## Current state
 - Multi-tab wallet shell with Overview / Receive / Send / Transactions / Address Book / Backup / Debug views
-- Read-only backend that proxies a safe subset of TRI RPC methods
-- Canonical-chain status support when a canonical RPC endpoint is configured
+- Node-backed wallet UI with canonical-chain status support when a canonical RPC endpoint is configured
 - Live node/bootstrap/runtime state rendering even while RPC is warming up
-- Peer diagnostics and wallet feature-state reporting
+- Persisted address labels and notes stored by the wallet web app
 - Receive-side copy flow, selected-address panel, QR rendering, and QR download
 - Transaction detail panel with selection state
-- Guarded send / backup / label API contracts exposed as explicit backend stubs
-- Backup/export and address-label scaffolding
-- Send/write actions intentionally disabled for now
+- Real send preview endpoint with address validation + fee/total estimation
+- Guarded address-generation endpoint (enabled only when `TRI_ENABLE_WRITE_OPS=1`)
+- Backup/export endpoint that can create file-copy exports when `TRI_WALLET_EXPORT_PATH` is configured
+- Final send/broadcast still intentionally gated
 
 ## Environment
 
