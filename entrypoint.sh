@@ -21,6 +21,7 @@ TRI_ALLOW_WALLET_UNLOCK="${TRI_ALLOW_WALLET_UNLOCK:-0}"
 TRI_ALLOW_RESEED="${TRI_ALLOW_RESEED:-0}"
 TRI_ALLOW_BACKUP_EXPORT="${TRI_ALLOW_BACKUP_EXPORT:-1}"
 TRI_WALLET_EXPORT_PATH="${TRI_WALLET_EXPORT_PATH:-$DATA_DIR/wallet.dat}"
+TRI_ADMIN_ACTION="${TRI_ADMIN_ACTION:-}"
 TRI_BIN="${TRI_BIN:-$BIN_DIR/trianglesd}"
 TRI_VERSION="${TRI_VERSION:-5.7.6}"
 TRI_RELEASE_BASE_URL="${TRI_RELEASE_BASE_URL:-https://github.com/SamiAhmed7777/triangles_v5/releases/download}"
@@ -701,9 +702,48 @@ run_node() {
   done
 }
 
+run_admin_action() {
+  local action="${1:-}"
+  local ts dest
+  case "$action" in
+    backup-run)
+      if [ "$TRI_ALLOW_BACKUP_EXPORT" != "1" ]; then
+        echo "Backup export is not allowed on this instance."
+        return 1
+      fi
+      local src="${TRI_WALLET_EXPORT_PATH:-$DATA_DIR/wallet.dat}"
+      ts=$(date +%Y%m%d-%H%M%S)
+      mkdir -p "$BACKUPS_DIR"
+      cp -f "$src" "$BACKUPS_DIR/wallet-${ts}.dat"
+      chmod 600 "$BACKUPS_DIR/wallet-${ts}.dat"
+      echo "Backup written to $BACKUPS_DIR/wallet-${ts}.dat"
+      ;;
+    reseed)
+      if [ "$TRI_ALLOW_RESEED" != "1" ]; then
+        echo "Reseed is not allowed on this instance."
+        return 1
+      fi
+      echo "Triggering reseed — clearing chain state and re-bootstrapping..."
+      rm -rf "$DATA_DIR/txleveldb" "$DATA_DIR/database" "$DATA_DIR/blk0001.dat" \
+             "$DATA_DIR/peers.dat" "$DATA_DIR/*.log" 2>/dev/null || true
+      echo "Reseed complete. Container will restart."
+      ;;
+    *)
+      echo "Unknown admin action: $action"
+      return 1
+      ;;
+  esac
+}
+
 main() {
   init_state_dir
   set_status "initializing" "Preparing TRIdock environment"
+
+  if [ -n "$TRI_ADMIN_ACTION" ]; then
+    run_admin_action "$TRI_ADMIN_ACTION"
+    exit $?
+  fi
+
   require_binary
   write_config
   start_tor

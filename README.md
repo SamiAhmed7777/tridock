@@ -85,23 +85,78 @@ environment:
 During startup TRIdock now writes simple state markers under `/tri/state` so operators can tell whether a node is initializing, bootstrapping, syncing, running, stopping, or errored.
 
 Useful files:
-- `/tri/state/status`
-- `/tri/state/reason`
-- `/tri/state/bootstrap-source`
-- `/tri/state/bootstrap-progress`
-- `/tri/state/canonical-status`
-- `/tri/state/canonical-height`
-- `/tri/state/canonical-bestblock`
-- `/tri/state/local-height`
-- `/tri/state/local-bestblock`
-- `/tri/state/node-ready`
-- `/tri/state/instance-id`
-- `/tri/state/wallet-id`
-- `/tri/state/role`
-- `/tri/state/capabilities.json`
-- `/tri/state/paths.json`
-- `/tri/state/wallet-export-path`
+- `/tri/state/status` — current runtime status (`initializing`, `bootstrapping`, `running`, `syncing`, `error`, etc.)
+- `/tri/state/reason` — human-readable reason for current status
+- `/tri/state/instance-id` — appliance instance identifier
+- `/tri/state/wallet-id` — wallet identity label
+- `/tri/state/role` — appliance role (`wallet`, `seed`, `canonical`, `replica`)
+- `/tri/state/capabilities.json` — published capability flags (writeOps, sendEnabled, unlockEnabled, reseedAllowed, backupEnabled, canonicalCheck)
+- `/tri/state/paths.json` — published volume mount paths
+- `/tri/state/node-ready` — empty marker; present means node is ready
+- `/tri/state/canonical-status` — canonical chain verification state
+- `/tri/state/bootstrap-source` / `/tri/state/bootstrap-progress` — bootstrap telemetry
+- `/tri/state/local-height` / `/tri/state/local-bestblock` — local chain tip
+- `/tri/state/canonical-height` / `/tri/state/canonical-bestblock` — canonical chain tip
+- `/tri/backups/` — wallet backup staging area (backup-run admin action)
 
+## Operator CLI
+
+A `tridock` operator binary is bundled inside the container at `/usr/local/bin/tridock`. It provides live status, capability inspection, and wallet backup without touching the node process directly:
+
+```bash
+# Full appliance status
+docker exec tridock-dev tridock status
+
+# Capability flags
+docker exec tridock-dev tridock capabilities
+
+# Volume paths
+docker exec tridock-dev tridock paths
+
+# Run a wallet backup now
+docker exec tridock-dev tridock backup run
+
+# View recent logs
+docker exec tridock-dev tridock logs
+```
+
+## Admin Actions (via environment)
+
+Admin actions are triggered by setting `TRI_ADMIN_ACTION` and running a new container ephemeral:
+
+```bash
+# Trigger a wallet backup
+docker run --rm \
+  --env TRI_ADMIN_ACTION=backup-run \
+  --env TRI_ALLOW_BACKUP_EXPORT=1 \
+  --env TRI_WALLET_EXPORT_PATH=/tri/data/wallet.dat \
+  -v tridock_tri_data:/tri/data \
+  -v tridock_tri_backups:/tri/backups \
+  samiahmed7777/tridock:latest
+
+# Trigger a reseed (clear chain and re-bootstrap)
+docker run --rm \
+  --env TRI_ADMIN_ACTION=reseed \
+  --env TRI_ALLOW_RESEED=1 \
+  -v tridock_tri_data:/tri/data \
+  -v tridock_tri_bootstrap:/tri/bootstrap \
+  samiahmed7777/tridock:latest
+```
+
+## Capability Flags
+
+The appliance publishes its allowed operations into `/tri/state/capabilities.json`. This lets the web UI or operator tooling make honest decisions about what can and cannot be done without guessing:
+
+| Flag | Meaning |
+|------|---------|
+| `writeOps` | Wallet write-capable RPC operations are exposed |
+| `sendEnabled` | Live send/broadcast is allowed |
+| `unlockEnabled` | Wallet lock/unlock controls are enabled |
+| `reseedAllowed` | Chain reseed is allowed on this instance |
+| `backupEnabled` | Backup export is allowed |
+| `canonicalCheck` | Canonical chain comparison is configured |
+
+## Volumes
 This means a fresh node can report meaningful bootstrap progress instead of looking identical to a broken container.
 
 By default TRIdock uses the bootstrap server URL wallets should rely on:
