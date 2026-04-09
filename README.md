@@ -3,11 +3,13 @@
 Qt-inspired web wallet UI for TRI, designed to sit safely in front of a TRIdock node.
 
 ## Current state
-- Multi-tab wallet shell with Overview / Receive / Send / Transactions / Address Book / Debug views
+- Multi-tab wallet shell with Overview / Receive / Send / Transactions / Address Book / Backup / Debug views
 - Read-only backend that proxies a safe subset of TRI RPC methods
 - Canonical-chain status support when a canonical RPC endpoint is configured
 - Live node/bootstrap/runtime state rendering even while RPC is warming up
 - Peer diagnostics and wallet feature-state reporting
+- Receive-side copy flow, selected-address panel, and QR rendering
+- Transaction detail panel and backup/export scaffolding
 - Send/write actions intentionally disabled for now
 
 ## Environment

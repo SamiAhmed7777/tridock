@@ -1,4 +1,5 @@
 import React, { Component, useEffect, useMemo, useState } from 'react'
+import QRCode from 'qrcode'
 import triLogo from './assets/triangles-wordmark.png'
 
 class ErrorBoundary extends Component {
@@ -79,6 +80,15 @@ function ActionButton({ children, disabled = false, onClick }) {
     >
       {children}
     </button>
+  )
+}
+
+function Field({ label, placeholder, disabled = true, value = '' }) {
+  return (
+    <div>
+      <div style={{ color: '#aeb7c4', marginBottom: 6 }}>{label}</div>
+      <input disabled={disabled} value={value} readOnly placeholder={placeholder} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: disabled ? '#8c96a5' : '#eef2f7' }} />
+    </div>
   )
 }
 
@@ -166,8 +176,21 @@ function ReceiveCard({ item, selected, onSelect, copied, onCopy }) {
       <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
         <ActionButton onClick={() => onSelect(item.address)}>{selected ? 'Selected' : 'View details'}</ActionButton>
         <ActionButton onClick={() => onCopy(item.address)}>{copied ? 'Copied' : 'Copy address'}</ActionButton>
-        <ActionButton disabled>Show QR soon</ActionButton>
       </div>
+    </div>
+  )
+}
+
+function TxRow({ tx, onSelect }) {
+  return (
+    <div onClick={() => onSelect(tx)} style={{ padding: 12, borderRadius: 10, border: '1px solid #343942', background: '#181b20', cursor: 'pointer' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <strong>{tx.category || 'unknown'}</strong>
+        <span style={{ color: '#aeb7c4' }}>{formatTime(tx.time)}</span>
+      </div>
+      <div style={{ marginTop: 8, color: '#eef2f7' }}>{formatAmount(tx.amount)}</div>
+      <div style={{ marginTop: 8, color: '#aeb7c4', fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>{tx.address || tx.txid || 'No address/txid reported'}</div>
+      {tx.confirmations !== undefined ? <div style={{ marginTop: 8, color: '#aeb7c4' }}>Confirmations: {tx.confirmations}</div> : null}
     </div>
   )
 }
@@ -182,6 +205,8 @@ function AppInner() {
   const [activeTab, setActiveTab] = useState('overview')
   const [selectedAddress, setSelectedAddress] = useState('')
   const [copiedAddress, setCopiedAddress] = useState('')
+  const [selectedTransaction, setSelectedTransaction] = useState(null)
+  const [qrDataUrl, setQrDataUrl] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -243,6 +268,33 @@ function AppInner() {
       setSelectedAddress(received[0].address)
     }
   }, [selectedAddress, received])
+
+  useEffect(() => {
+    let cancelled = false
+    async function buildQr() {
+      if (!selectedReceive?.address) {
+        setQrDataUrl('')
+        return
+      }
+      try {
+        const url = await QRCode.toDataURL(selectedReceive.address, {
+          margin: 1,
+          width: 220,
+          color: {
+            dark: '#f1f5fb',
+            light: '#111419',
+          },
+        })
+        if (!cancelled) setQrDataUrl(url)
+      } catch {
+        if (!cancelled) setQrDataUrl('')
+      }
+    }
+    buildQr()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedReceive?.address])
 
   const walletMode = summary?.rpcReady ? 'read-only live wallet' : 'read-only warmup mode'
   const canonical = summary?.canonical || { enabled: false }
@@ -346,12 +398,12 @@ function AppInner() {
               <InfoRow label="Address" value={shortAddress(selectedReceive.address)} mono />
               <InfoRow label="Total received" value={formatAmount(selectedReceive.amount)} />
               <InfoRow label="Known txids" value={Array.isArray(selectedReceive.txids) ? selectedReceive.txids.length : '—'} />
-              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: '#111419', border: '1px solid #2d323c', minHeight: 160, display: 'grid', placeItems: 'center', color: '#aeb7c4' }}>
-                QR panel placeholder
+              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: '#111419', border: '1px solid #2d323c', minHeight: 160, display: 'grid', placeItems: 'center' }}>
+                {qrDataUrl ? <img src={qrDataUrl} alt="Receive address QR code" style={{ width: 220, height: 220, objectFit: 'contain', imageRendering: 'pixelated' }} /> : <div style={{ color: '#aeb7c4' }}>Generating QR…</div>}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <ActionButton onClick={() => handleCopyAddress(selectedReceive.address)}>{copiedAddress === selectedReceive.address ? 'Copied' : 'Copy full address'}</ActionButton>
-                <ActionButton disabled>Save QR</ActionButton>
+                <ActionButton disabled={!qrDataUrl}>Save QR soon</ActionButton>
               </div>
             </div>
           ) : <div style={{ color: '#aeb7c4' }}>Pick a receive address to inspect it here.</div>}
@@ -361,7 +413,7 @@ function AppInner() {
           <div style={{ display: 'grid', gap: 8 }}>
             <InfoRow label="Copy address" value="live" />
             <InfoRow label="Receive details" value="live" />
-            <InfoRow label="QR rendering" value="next" />
+            <InfoRow label="QR rendering" value="live" />
             <InfoRow label="Address labels" value="planned" />
             <InfoRow label="Generate new address" value="blocked until guarded write path exists" />
           </div>
@@ -374,55 +426,68 @@ function AppInner() {
     <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr', gap: 16 }}>
       <Card title="Send TRI" subtitle="Real send UX shape, but still hard-blocked until guarded write support exists" tone="warning">
         <div style={{ display: 'grid', gap: 12 }}>
-          <div>
-            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Destination address</div>
-            <input disabled placeholder="Send is disabled for now" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#8c96a5' }} />
+          <Field label="Destination address" placeholder="Send is disabled for now" />
+          <Field label="Amount" placeholder="0.00 TRI" />
+          <Field label="Memo / label" placeholder="Optional note" />
+          <Field label="Fee estimate" placeholder="Will appear once guarded send is implemented" />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button disabled style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #6a3943', background: '#2b181d', color: '#ffcad4', cursor: 'not-allowed', fontWeight: 700 }}>Send disabled until guarded wallet writes exist</button>
+            <ActionButton disabled>Preview transaction</ActionButton>
           </div>
-          <div>
-            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Amount</div>
-            <input disabled placeholder="0.00 TRI" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#8c96a5' }} />
-          </div>
-          <div>
-            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Memo / label</div>
-            <input disabled placeholder="Optional note" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#8c96a5' }} />
-          </div>
-          <button disabled style={{ padding: '12px 16px', borderRadius: 10, border: '1px solid #6a3943', background: '#2b181d', color: '#ffcad4', cursor: 'not-allowed', fontWeight: 700 }}>Send disabled until guarded wallet writes exist</button>
         </div>
       </Card>
 
-      <Card title="Write-safety gates" subtitle="What has to exist before send becomes real">
-        <div style={{ display: 'grid', gap: 8 }}>
-          <InfoRow label="Dedicated wallet path" value="required" />
-          <InfoRow label="Backup/export path" value="required" />
-          <InfoRow label="Unlock/lock safety" value="required" />
-          <InfoRow label="Transaction confirmation UX" value="required" />
-          <InfoRow label="Explicit approval around wallet.dat-risk" value="required" />
-        </div>
-      </Card>
+      <div style={{ display: 'grid', gap: 16 }}>
+        <Card title="Write-safety gates" subtitle="What has to exist before send becomes real">
+          <div style={{ display: 'grid', gap: 8 }}>
+            <InfoRow label="Dedicated wallet path" value="required" />
+            <InfoRow label="Backup/export path" value="required" />
+            <InfoRow label="Unlock/lock safety" value="required" />
+            <InfoRow label="Transaction confirmation UX" value="required" />
+            <InfoRow label="Explicit approval around wallet.dat-risk" value="required" />
+          </div>
+        </Card>
+
+        <Card title="Planned send flow" subtitle="How this should eventually work" tone="accent">
+          <div style={{ display: 'grid', gap: 8 }}>
+            <InfoRow label="Compose" value="planned" />
+            <InfoRow label="Preview / fee check" value="planned" />
+            <InfoRow label="Final confirmation" value="planned" />
+            <InfoRow label="Broadcast result" value="planned" />
+          </div>
+        </Card>
+      </div>
     </div>
   )
 
   const transactionsPanel = (
-    <Card title="Recent transactions" subtitle="Read-only live activity view">
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        {['all', 'receive', 'send', 'stake', 'generate'].map((kind) => (
-          <button key={kind} onClick={() => setSelectedTx(kind)} style={{ border: '1px solid #414955', background: selectedTx === kind ? '#2a3140' : '#171a20', color: '#eef2f7', borderRadius: 999, padding: '8px 12px', cursor: 'pointer' }}>{kind}</button>
-        ))}
-      </div>
-      <div style={{ display: 'grid', gap: 10 }}>
-        {txs.length ? txs.map((tx, index) => (
-          <div key={`${tx.txid || index}-${index}`} style={{ padding: 12, borderRadius: 10, border: '1px solid #343942', background: '#181b20' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <strong>{tx.category || 'unknown'}</strong>
-              <span style={{ color: '#aeb7c4' }}>{formatTime(tx.time)}</span>
-            </div>
-            <div style={{ marginTop: 8, color: '#eef2f7' }}>{formatAmount(tx.amount)}</div>
-            <div style={{ marginTop: 8, color: '#aeb7c4', fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>{tx.address || tx.txid || 'No address/txid reported'}</div>
-            {tx.confirmations !== undefined ? <div style={{ marginTop: 8, color: '#aeb7c4' }}>Confirmations: {tx.confirmations}</div> : null}
+    <div style={{ display: 'grid', gridTemplateColumns: '1.15fr .85fr', gap: 16 }}>
+      <Card title="Recent transactions" subtitle="Read-only live activity view">
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          {['all', 'receive', 'send', 'stake', 'generate'].map((kind) => (
+            <button key={kind} onClick={() => setSelectedTx(kind)} style={{ border: '1px solid #414955', background: selectedTx === kind ? '#2a3140' : '#171a20', color: '#eef2f7', borderRadius: 999, padding: '8px 12px', cursor: 'pointer' }}>{kind}</button>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {txs.length ? txs.map((tx, index) => (
+            <TxRow key={`${tx.txid || index}-${index}`} tx={tx} onSelect={setSelectedTransaction} />
+          )) : <div style={{ color: '#aeb7c4' }}>No transactions to show for this filter yet.</div>}
+        </div>
+      </Card>
+
+      <Card title="Transaction detail" subtitle="Select a transaction to inspect it" tone="ok">
+        {selectedTransaction ? (
+          <div style={{ display: 'grid', gap: 8 }}>
+            <InfoRow label="Category" value={selectedTransaction.category || '—'} />
+            <InfoRow label="Amount" value={formatAmount(selectedTransaction.amount)} />
+            <InfoRow label="Time" value={formatTime(selectedTransaction.time)} />
+            <InfoRow label="Confirmations" value={selectedTransaction.confirmations ?? '—'} />
+            <InfoRow label="Address" value={shortAddress(selectedTransaction.address)} mono />
+            <InfoRow label="TXID" value={formatHash(selectedTransaction.txid)} mono />
           </div>
-        )) : <div style={{ color: '#aeb7c4' }}>No transactions to show for this filter yet.</div>}
-      </div>
-    </Card>
+        ) : <div style={{ color: '#aeb7c4' }}>Click a transaction on the left to open its detail view.</div>}
+      </Card>
+    </div>
   )
 
   const addressesPanel = (
@@ -436,6 +501,10 @@ function AppInner() {
                 <span style={{ color: '#aeb7c4' }}>{formatAmount(item.amount)}</span>
               </div>
               <div style={{ marginTop: 8, fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>{item.address}</div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+                <ActionButton onClick={() => handleCopyAddress(item.address)}>{copiedAddress === item.address ? 'Copied' : 'Copy'}</ActionButton>
+                <ActionButton disabled>Label soon</ActionButton>
+              </div>
             </div>
           )) : <div style={{ color: '#aeb7c4' }}>Address book will populate from wallet receive data when RPC is ready.</div>}
         </div>
@@ -445,7 +514,7 @@ function AppInner() {
         <div style={{ display: 'grid', gap: 8 }}>
           <InfoRow label="Generate new address" value="planned, blocked until guarded write path exists" />
           <InfoRow label="Label address" value="planned" />
-          <InfoRow label="Copy / QR" value="partly live" />
+          <InfoRow label="Copy / QR" value="live" />
           <InfoRow label="Import / export labels" value="planned" />
         </div>
       </Card>
@@ -455,12 +524,21 @@ function AppInner() {
   const backupPanel = (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr', gap: 16 }}>
       <Card title="Backup / export" subtitle="Shape the wallet-grade safety layer before enabling writes">
-        <div style={{ display: 'grid', gap: 8 }}>
+        <div style={{ display: 'grid', gap: 12 }}>
           <InfoRow label="Export wallet backup" value="planned" />
           <InfoRow label="Backup location" value="planned dedicated path" />
           <InfoRow label="Backup freshness" value="planned" />
           <InfoRow label="Recovery verification" value="planned" />
           <InfoRow label="Unsafe raw wallet file handling" value="forbidden from UI" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Target backup path" placeholder="/var/backups/tri-wallet" />
+            <Field label="Last verified backup" placeholder="Not available yet" />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <ActionButton disabled>Create backup</ActionButton>
+            <ActionButton disabled>Export wallet package</ActionButton>
+            <ActionButton disabled>Verify restore package</ActionButton>
+          </div>
         </div>
       </Card>
 
