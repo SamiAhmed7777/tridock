@@ -260,6 +260,7 @@ export default function App() {
   const [broadcastResult, setBroadcastResult] = useState(null)
   const [walletCountdown, setWalletCountdown] = useState(null)
   const [nodes, setNodes] = useState([])
+  const [system, setSystem] = useState(null)
 
   // Tick wallet unlock countdown every second; when it hits 0, refresh capabilities
   const countdownRef = useRef(null)
@@ -301,13 +302,14 @@ export default function App() {
 
     async function load() {
       try {
-        const [healthRes, stateRes, summaryRes, contractsRes, labelsRes, nodesRes] = await Promise.all([
+        const [healthRes, stateRes, summaryRes, contractsRes, labelsRes, nodesRes, systemRes] = await Promise.all([
           fetch('/api/health'),
           fetch('/api/node/state'),
           fetch('/api/wallet/summary'),
           fetch('/api/wallet/contracts'),
           fetch('/api/wallet/labels'),
           fetch('/api/nodes'),
+          fetch('/api/system'),
         ])
 
         const healthData = await healthRes.json().catch(() => null)
@@ -316,6 +318,7 @@ export default function App() {
         const contractsData = await contractsRes.json().catch(() => null)
         const labelsData = await labelsRes.json().catch(() => null)
         const nodesData = await nodesRes.json().catch(() => null)
+        const systemData = await systemRes.json().catch(() => null)
 
         if (cancelled) return
 
@@ -324,6 +327,7 @@ export default function App() {
         setContracts(contractsData)
         setLabels(labelsData?.labels || {})
         setNodes(nodesData?.nodes || [])
+        setSystem(systemData || null)
         setLastUpdated(new Date())
 
         if (summaryData) {
@@ -872,6 +876,18 @@ export default function App() {
           <InfoRow label="Address generation" value={contracts?.addressGeneration?.available ? (contracts?.addressGeneration?.ready ? 'live' : 'guarded') : 'blocked'} />
           <InfoRow label="Backup export" value={contracts?.backup?.available ? (contracts?.backup?.ready ? 'live' : 'guarded') : 'not configured'} />
           <InfoRow label="Wallet lock/unlock" value={contracts?.unlock?.available ? (contracts?.unlock?.ready ? 'live' : 'guarded') : 'off'} />
+        </div>
+      </Card>
+      <Card title="Container / system" subtitle="Runtime environment and Docker metadata">
+        <div style={{ display: 'grid', gap: 8 }}>
+          <InfoRow label="Container" value={system?.inContainer ? `yes (${system.containerId || 'running'})` : 'not detected'} />
+          <InfoRow label="Uptime" value={system?.uptimeHuman || '—'} />
+          {system?.memUsage && system?.memLimit ? (
+            <InfoRow label="Memory" value={`${system.memUsage}MB / ${system.memLimit}MB`} />
+          ) : <InfoRow label="Memory" value="—" />}
+          <InfoRow label="Node.js" value={system?.nodeVersion || '—'} />
+          <InfoRow label="TRI version" value={system?.triVersion || '—'} />
+          <InfoRow label="Platform" value={system?.platform || '—'} />
         </div>
       </Card>
     </div>

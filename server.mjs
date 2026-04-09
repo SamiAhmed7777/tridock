@@ -272,6 +272,59 @@ app.get('/api/node/state', async (_req, res) => {
   res.json(await readNodeState())
 })
 
+app.get('/api/system', async (_req, res) => {
+  // Detect container environment and expose system metadata
+  let inContainer = false
+  let containerId = ''
+  try {
+    const cgroup = await fs.readFile('/proc/self/cgroup', 'utf8')
+    const match = cgroup.match(/docker|lxc|containerd/)
+    inContainer = Boolean(match)
+    const idMatch = cgroup.match(/[a-f0-9]{64}/)
+    if (idMatch) containerId = idMatch[0].slice(0, 12)
+  } catch { /* not available */ }
+
+  // Uptime
+  let uptimeSeconds = 0
+  try {
+    const uptime = await fs.readFile('/proc/uptime', 'utf8')
+    uptimeSeconds = Math.floor(Number(uptime.split(' ')[0]))
+  } catch { /* ignore */ }
+
+  // Memory (from cgroup v2 or v1)
+  let memLimit = null
+  let memUsage = null
+  try {
+    for (const path of ['/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes']) {
+      try {
+        memLimit = parseInt(await fs.readFile(path, 'utf8'), 10)
+        if (memLimit > 0 && memLimit < 999999999) break
+        memLimit = null
+      } catch { /* try next */ }
+    }
+    for (const path of ['/sys/fs/cgroup/memory.current', '/sys/fs/cgroup/memory/memory.usage_in_bytes']) {
+      try {
+        memUsage = parseInt(await fs.readFile(path, 'utf8'), 10)
+        break
+      } catch { /* try next */ }
+    }
+  } catch { /* ignore */ }
+
+  res.json({
+    inContainer,
+    containerId,
+    uptimeSeconds,
+    uptimeHuman: uptimeSeconds > 0 ? `${Math.floor(uptimeSeconds / 86400)}d ${Math.floor((uptimeSeconds % 86400) / 3600)}h ${Math.floor((uptimeSeconds % 3600) / 60)}m` : null,
+    memLimit: memLimit ? Math.round(memLimit / 1024 / 1024) : null,
+    memUsage: memUsage ? Math.round(memUsage / 1024 / 1024) : null,
+    nodeVersion: process.version,
+    platform: process.platform,
+    triVersion: process.env.TRI_VERSION || null,
+    imageVersion: process.env.TRIDOCK_VERSION || process.env.TRI_VERSION || null,
+    activeNode: { id: getActiveNode().id, name: getActiveNode().name, url: getActiveNode().url },
+  })
+})
+
 app.get('/api/wallet/labels', async (_req, res) => {
   res.json({ ok: true, labels: await readLabels() })
 })
