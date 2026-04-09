@@ -47,3 +47,17 @@
 | `TRI_ALLOW_RESEED` | `0` | Publish that reseed/admin destructive flow is allowed |
 | `TRI_ALLOW_BACKUP_EXPORT` | `1` | Publish that backup export should be available |
 | `TRI_WALLET_EXPORT_PATH` | `/tri/data/wallet.dat` | Export source path exposed to wallet-web/operator tooling |
+| `TRI_STATE_DIR` | `/tri/state` | Runtime state files directory (status, canonical, bootstrap telemetry) |
+| `TRI_ADMIN_ACTION` | empty | One-shot admin action on startup: `backup-run`, `reseed` |
+| `TRI_CANONICAL_RPC_URL` | empty | Canonical node RPC URL for chain verification |
+| `TRI_CANONICAL_RPC_USER` | empty | Canonical RPC user |
+| `TRI_CANONICAL_RPC_PASSWORD` | empty | Canonical RPC password |
+| `TRI_CANONICAL_VERIFY_ATTEMPTS` | `20` | How many attempts before canonical verification times out |
+| `TRI_CANONICAL_VERIFY_INTERVAL` | `30` | Seconds between canonical verification polls |
+| `TRI_CANONICAL_REQUIRED_MATCHES` | `2` | Consecutive height+hash matches required to consider chain aligned |
+| `TRI_BOOTSTRAP_MIN_BLOCK_BYTES` | `100000000` | Minimum blk0001.dat size to accept bootstrap as valid |
+| `TRI_BOOTSTRAP_MIN_LDB_COUNT` | `300` | Minimum txleveldb .ldb file count to accept bootstrap as valid |
+| `TRI_RELEASE_BASE_URL` | GitHub releases | Base URL for TRI release downloads |
+| `TRI_RELEASE_FILENAME` | auto | Explicit release archive filename |
+| `TRI_RELEASE_URL` | auto | Full URL to specific release artifact |
+| `TRI_CACHE_DIR` | `/tri/cache` | Temporary artifact cache directory |

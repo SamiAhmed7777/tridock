@@ -1,3 +1,5 @@
+# Seed node — non-wallet full node that peers and serves blockchain data.
+# No wallet, no staking. Good for bootstrap sources or network relay.
 services:
   tridock-seed:
     image: samiahmed7777/tridock:latest
@@ -6,19 +8,50 @@ services:
     ports:
       - "24112:24112/tcp"
       - "24112:24112/udp"
+      - "19112:19112/tcp"
     environment:
       TRI_MODE: seed
       TRI_NODE_NAME: tridock-seed
+      TRI_INSTANCE_ID: tridock-seed
+      TRI_WALLET_ID: ""
+      TRI_ROLE: seed
+      TRI_VERSION: "5.7.6"
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
+      TRI_PREFER_BOOTSTRAP: "1"
       TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
-      TRI_MAX_CONNECTIONS: "128"
+      TRI_BOOTSTRAP_TIMEOUT: "30"
+      TRI_BOOTSTRAP_MIN_BLOCK_BYTES: "100000000"
+      TRI_BOOTSTRAP_MIN_LDB_COUNT: "300"
+      TRI_RELEASE_BASE_URL: "https://github.com/SamiAhmed7777/triangles_v5/releases/download"
       TRI_RPCUSER: tri
       TRI_RPCPASSWORD: change-me
+      TRI_RPCPORT: "19112"
+      TRI_PORT: "24112"
+      TRI_MAX_CONNECTIONS: "128"
+      TRI_DBCACHE: "512"
+      # Seed has no wallet — all write/capability flags OFF
+      TRI_ENABLE_WRITE_OPS: "0"
+      TRI_ALLOW_SEND_BROADCAST: "0"
+      TRI_ALLOW_WALLET_UNLOCK: "0"
+      TRI_ALLOW_RESEED: "0"
+      TRI_ALLOW_BACKUP_EXPORT: "0"
     volumes:
       - tri_seed_data:/tri/data
       - tri_seed_bootstrap:/tri/bootstrap
+      - tri_seed_cache:/tri/cache
+      - tri_seed_state:/tri/state
+      - tri_seed_backups:/tri/backups
+      - tri_seed_config:/tri/config
+      - tri_seed_ui_data:/tri/ui-data
+      - tri_seed_logs:/tri/logs
 
 volumes:
   tri_seed_data:
   tri_seed_bootstrap:
+  tri_seed_cache:
+  tri_seed_state:
+  tri_seed_backups:
+  tri_seed_config:
+  tri_seed_ui_data:
+  tri_seed_logs:

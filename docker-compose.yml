@@ -76,6 +76,7 @@ services:
       - tri_data:/tri/data:ro
       - tri_ui_data:/app/data
       - tri_backups:/tri/backups
+      - tri_logs:/tri/logs:ro
     depends_on:
       - tridock
 

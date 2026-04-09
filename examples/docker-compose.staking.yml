@@ -1,3 +1,5 @@
+# Staking wallet — wallet-enabled node that stakes TRI and earns rewards.
+# Staking requires an unlocked wallet. Enable capability flags carefully.
 services:
   tridock-staking:
     image: samiahmed7777/tridock:latest
@@ -6,19 +8,53 @@ services:
     ports:
       - "24112:24112/tcp"
       - "24112:24112/udp"
+      - "19112:19112/tcp"
     environment:
       TRI_MODE: staking
       TRI_NODE_NAME: tridock-staking
-      TRI_STAKE_ENABLED: "1"
+      TRI_INSTANCE_ID: tridock-staking
+      TRI_WALLET_ID: staking-wallet
+      TRI_ROLE: wallet
+      TRI_VERSION: "5.7.6"
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
+      TRI_PREFER_BOOTSTRAP: "1"
       TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
+      TRI_BOOTSTRAP_TIMEOUT: "30"
+      TRI_BOOTSTRAP_MIN_BLOCK_BYTES: "100000000"
+      TRI_BOOTSTRAP_MIN_LDB_COUNT: "300"
+      TRI_RELEASE_BASE_URL: "https://github.com/SamiAhmed7777/triangles_v5/releases/download"
+      TRI_STAKE_ENABLED: "1"
       TRI_RPCUSER: tri
       TRI_RPCPASSWORD: change-me
+      TRI_RPCPORT: "19112"
+      TRI_PORT: "24112"
+      TRI_MAX_CONNECTIONS: "64"
+      TRI_DBCACHE: "512"
+      # Staking wallet — read + stake + unlock + backup
+      # Broadcast and reseed OFF unless explicitly needed
+      TRI_ENABLE_WRITE_OPS: "1"
+      TRI_ALLOW_SEND_BROADCAST: "0"
+      TRI_ALLOW_WALLET_UNLOCK: "1"
+      TRI_ALLOW_RESEED: "0"
+      TRI_ALLOW_BACKUP_EXPORT: "1"
+      TRI_WALLET_EXPORT_PATH: "/tri/data/wallet.dat"
     volumes:
       - tri_staking_data:/tri/data
       - tri_staking_bootstrap:/tri/bootstrap
+      - tri_staking_cache:/tri/cache
+      - tri_staking_state:/tri/state
+      - tri_staking_backups:/tri/backups
+      - tri_staking_config:/tri/config
+      - tri_staking_ui_data:/tri/ui-data
+      - tri_staking_logs:/tri/logs
 
 volumes:
   tri_staking_data:
   tri_staking_bootstrap:
+  tri_staking_cache:
+  tri_staking_state:
+  tri_staking_backups:
+  tri_staking_config:
+  tri_staking_ui_data:
+  tri_staking_logs:
