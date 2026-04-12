@@ -503,6 +503,22 @@ tor=127.0.0.1:9050
 CFG
   fi
 
+  # SPV node type
+  if [ "$NODE_TYPE" = "spv" ]; then
+    cat >> "$CONF_FILE" <<CFG
+prune=1
+prune=5000
+txindex=0
+addressindex=0
+spentinfo=0
+CFG
+    log "Configuring as SPV (pruned) node — lightweight wallet without full chain"
+  else
+    echo "txindex=1" >> "$CONF_FILE"
+    echo "addressindex=1" >> "$CONF_FILE"
+    echo "spentinfo=1" >> "$CONF_FILE"
+  fi
+
   if [ "$STAKE_ENABLED" = "1" ]; then
     echo "staking=1" >> "$CONF_FILE"
   else
@@ -586,6 +602,14 @@ chain_looks_sane() {
   chain_present || return 1
   local blk_size ldb_count
   blk_size=$(stat -c%s "$DATA_DIR/blk0001.dat" 2>/dev/null || echo 0)
+
+  # SPV mode: chain just needs to exist, don't enforce full chain size
+  if [ "$NODE_TYPE" = "spv" ]; then
+    [ "$blk_size" -ge 1048576 ] || return 1
+    return 0
+  fi
+
+  # Full node: enforce full chain requirements
   [ "$blk_size" -ge "$BOOTSTRAP_MIN_BLOCK_BYTES" ] || return 1
   if [ -d "$DATA_DIR/txleveldb" ]; then
     ldb_count=$(find "$DATA_DIR/txleveldb" -name '*.ldb' 2>/dev/null | wc -l)
@@ -597,7 +621,12 @@ chain_looks_sane() {
 }
 
 reset_chain_dirs() {
-  rm -rf "$DATA_DIR/txleveldb" "$DATA_DIR/database" "$DATA_DIR/blk0001.dat" "$DATA_DIR/peers.dat" "$DATA_DIR"/*.log 2>/dev/null || true
+  # For SPV: only wipe chain state, keep structure. For full node: full wipe.
+  if [ "$NODE_TYPE" = "spv" ]; then
+    rm -rf "$DATA_DIR/txleveldb" "$DATA_DIR/database" "$DATA_DIR/blk0001.dat" "$DATA_DIR/peers.dat" "$DATA_DIR/banlist.dat" 2>/dev/null || true
+  else
+    rm -rf "$DATA_DIR/txleveldb" "$DATA_DIR/database" "$DATA_DIR/blk0001.dat" "$DATA_DIR/peers.dat" "$DATA_DIR/*.log" "$DATA_DIR/banlist.dat" 2>/dev/null || true
+  fi
 }
 
 bootstrap_chain() {
@@ -685,6 +714,11 @@ build_args() {
     "-port=$TRI_PORT"
     "-printtoconsole"
   )
+
+  if [ "$NODE_TYPE" = "spv" ]; then
+    TRI_ARGS+=("-prune=5000" "-txindex=0")
+    log "SPV node: using pruned chain mode with reduced dbcache requirement"
+  fi
 
   if [ "$PREFER_BOOTSTRAP" = "1" ]; then
     split_sources
