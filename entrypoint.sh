@@ -126,6 +126,12 @@ publish_static_metadata() {
   write_state_value "$ROLE_FILE" "$TRI_ROLE"
   write_state_value "$WALLET_EXPORT_FILE" "$TRI_WALLET_EXPORT_PATH"
 
+  local onion_addr
+  onion_addr=$(cat "$STATE_DIR/onion-address" 2>/dev/null || echo "")
+  if [ -z "$onion_addr" ] && [ -f "/tri/tor/node/hostname" ]; then
+    onion_addr=$(cat /tri/tor/node/hostname 2>/dev/null | tr -d ' \n' || echo "")
+  fi
+
   write_json_file "$CAPABILITIES_FILE" "$(jq -cn \
     --arg instanceId "$TRI_INSTANCE_ID" \
     --arg walletId "$TRI_WALLET_ID" \
@@ -139,7 +145,8 @@ publish_static_metadata() {
     --argjson seedMode $( [ "$SEED_MODE" = "1" ] && echo true || echo false ) \
     --argjson seedIsolation $( [ "$TRI_SEED_ISOLATION" = "1" ] && echo true || echo false ) \
     --argjson seedDisableDiscovery $( [ "$TRI_SEED_DISABLE_DISCOVERY" = "1" ] && echo true || echo false ) \
-    '{instanceId:$instanceId,walletId:$walletId,role:$role,writeOps:$writeOps,sendEnabled:$sendEnabled,unlockEnabled:$unlockEnabled,reseedAllowed:$reseedAllowed,backupEnabled:$backupEnabled,canonicalCheck:$canonicalCheck,seedMode:$seedMode,seedIsolation:$seedIsolation,seedDisableDiscovery:$seedDisableDiscovery}')"
+    --arg onionAddress "$onion_addr" \
+    '{instanceId:$instanceId,walletId:$walletId,role:$role,writeOps:$writeOps,sendEnabled:$sendEnabled,unlockEnabled:$unlockEnabled,reseedAllowed:$reseedAllowed,backupEnabled:$backupEnabled,canonicalCheck:$canonicalCheck,seedMode:$seedMode,seedIsolation:$seedIsolation,seedDisableDiscovery:$seedDisableDiscovery,onionAddress:$onionAddress}')"
 
   write_json_file "$PATHS_FILE" "$(jq -cn \
     --arg data "$DATA_DIR" \
@@ -500,6 +507,7 @@ CFG
 proxy=127.0.0.1:9050
 listenonion=1
 tor=127.0.0.1:9050
+onion=127.0.0.1:9050
 CFG
   fi
 
@@ -582,16 +590,57 @@ CFG
 start_tor() {
   [ "$TOR_ENABLED" = "1" ] || return 0
   if pgrep -x tor >/dev/null 2>&1; then
+    log "Tor already running"
     return 0
   fi
-  log "Starting Tor..."
+
+  log "Starting Tor with full hidden service configuration..."
   mkdir -p /tri/tor
   chmod 700 /tri/tor || true
-  tor --RunAsDaemon 1 --SocksPort 9050 --DataDirectory /tri/tor >"$TOR_LOG" 2>&1 || warn "Tor failed to start; continuing without confirmed Tor health"
-  sleep 2
+
+  # Write full torrc with hidden service for node port
+  cat > /tri/tor/torrc <<'TORRC'
+SocksPort 9050
+SocksPort 127.0.0.1:9050
+HiddenServiceDir /tri/tor/node
+HiddenServicePort 24112 127.0.0.1:24112
+HiddenServiceVersion 3
+CircuitDuration 10
+NumEntryGuards 3
+TORRC
+
+  log "Tor config written. Launching Tor daemon..."
+
+  tor --RunAsDaemon 1 --DataDirectory /tri/tor --TorrcFile /tri/tor/torrc >"$TOR_LOG" 2>&1 &
+  sleep 5
+
   if ! pgrep -x tor >/dev/null 2>&1; then
-    warn "Tor does not appear to be running after startup"
+    warn "Tor failed to start. Check $TOR_LOG for details."
+    warn "Continuing without Tor — node may have reduced connectivity."
+    return 1
   fi
+
+  log "Tor running. Waiting for onion address to be published..."
+
+  # Wait for onion address to appear (hidden service publishes it after first boot)
+  local onion_file="/tri/tor/node/hostname"
+  local attempts=0
+  while [ "$attempts" -lt 20 ]; do
+    if [ -f "$onion_file" ] && [ -s "$onion_file" ]; then
+      local onion_addr
+      onion_addr=$(cat "$onion_file" 2>/dev/null | tr -d ' \n')
+      if [ -n "$onion_addr" ]; then
+        log "Tor onion address: $onion_addr"
+        echo "$onion_addr" > "$STATE_DIR/onion-address"
+        return 0
+      fi
+    fi
+    sleep 2
+    attempts=$((attempts + 1))
+  done
+
+  warn "Onion address not published yet. Tor is running but hidden service may still be initializing."
+  return 0
 }
 
 chain_present() {
