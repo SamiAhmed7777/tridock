@@ -48,6 +48,7 @@ SEED_MODE="${TRI_SEED_MODE:-0}"
 TRI_SEED_ISOLATION="${TRI_SEED_ISOLATION:-0}"
 TRI_SEED_TRUSTED_PEERS="${TRI_SEED_TRUSTED_PEERS:-}"
 TRI_SEED_DISABLE_DISCOVERY="${TRI_SEED_DISABLE_DISCOVERY:-0}"
+SEED_STARTUP_DELAY="${TRI_SEED_STARTUP_DELAY:-0}"
 EXTERNAL_IP="${TRI_EXTERNAL_IP:-}"
 EXTRA_ARGS="${TRI_EXTRA_ARGS:-}"
 CANONICAL_RPC_URL="${TRI_CANONICAL_RPC_URL:-}"
@@ -521,12 +522,38 @@ CFG
     echo "externalip=$EXTERNAL_IP" >> "$CONF_FILE"
   fi
 
+  # Seed isolation: if TRI_SEED_ISOLATION=1, wipe stale peer data before starting
+  if [ "$SEED_MODE" = "1" ] && [ "$TRI_SEED_ISOLATION" = "1" ]; then
+    if [ -f "$DATA_DIR/peers.dat" ]; then
+      rm -f "$DATA_DIR/peers.dat"
+      log "Seed isolation: removed stale peers.dat to prevent self-contamination"
+    fi
+  fi
+
+  # Seed trusted peers: use explicitly configured trusted peers for seed mode
+  if [ "$SEED_MODE" = "1" ] && [ -n "$TRI_SEED_TRUSTED_PEERS" ]; then
+    OLDIFS="$IFS"
+    IFS=','
+    for tp in $TRI_SEED_TRUSTED_PEERS; do
+      echo "addnode=$tp" >> "$CONF_FILE"
+      echo "connect=$tp" >> "$CONF_FILE"
+    done
+    IFS="$OLDIFS"
+    log "Seed mode: using trusted peers for initial connection"
+  fi
+
   case "$MODE" in
     seed)
       cat >> "$CONF_FILE" <<CFG
 upnp=0
-discover=1
 CFG
+      if [ "$TRI_SEED_DISABLE_DISCOVERY" = "1" ]; then
+        echo "discover=0" >> "$CONF_FILE"
+        echo "listen=0" >> "$CONF_FILE"
+        log "Seed mode: discovery and listen disabled for isolation"
+      else
+        echo "discover=1" >> "$CONF_FILE"
+      fi
       ;;
     staking)
       echo "staking=1" >> "$CONF_FILE"
@@ -638,6 +665,15 @@ bootstrap_chain() {
   return 1
 }
 
+add_seed_startup_delay() {
+  # Sequential delay: if SEED_STARTUP_DELAY is set, wait before starting
+  # This prevents multiple seed containers from contaminating each other on restart
+  if [ "$SEED_MODE" = "1" ] && [ -n "$SEED_STARTUP_DELAY" ] && [ "$SEED_STARTUP_DELAY" -gt 0 ]; then
+    log "Seed mode: waiting ${SEED_STARTUP_DELAY}s before starting to avoid peer contamination..."
+    sleep "$SEED_STARTUP_DELAY"
+  fi
+}
+
 build_args() {
   TRI_ARGS=(
     "-datadir=$DATA_DIR"
@@ -670,6 +706,7 @@ run_node() {
 
   while true; do
     build_args
+    add_seed_startup_delay
     set_status "starting" "Launching trianglesd"
     log "Starting Triangles node in $MODE mode..."
     "$TRI_BIN" "${TRI_ARGS[@]}" &
