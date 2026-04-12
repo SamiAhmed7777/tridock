@@ -128,4 +128,4 @@ volumes:
   tri_backups:
   tri_config:
   tri_ui_data:
-  tri_logs
+  tri_logs:
