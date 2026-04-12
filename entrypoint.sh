@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 MODE="${TRI_MODE:-full}"
+NODE_TYPE="${TRI_NODE_TYPE:-full}"
 NODE_NAME="${TRI_NODE_NAME:-tridock}"
 DATA_DIR="${TRI_DATA_DIR:-/tri/data}"
 BOOTSTRAP_DIR="${TRI_BOOTSTRAP_DIR:-/tri/bootstrap}"
@@ -37,6 +38,29 @@ BOOTSTRAP_TIMEOUT="${TRI_BOOTSTRAP_TIMEOUT:-30}"
 BOOTSTRAP_MIN_BLOCK_BYTES="${TRI_BOOTSTRAP_MIN_BLOCK_BYTES:-100000000}"
 BOOTSTRAP_MIN_LDB_COUNT="${TRI_BOOTSTRAP_MIN_LDB_COUNT:-300}"
 TOR_ENABLED="${TRI_TOR_ENABLED:-1}"
+TOR_SOCKS_PORT="${TRI_TOR_SOCKS_PORT:-9050}"
+
+# Determine available Tor SOCKS port early, so write_config and start_tor can both use it
+find_socks_port() {
+  local port="${TOR_SOCKS_PORT:-9050}"
+  local attempt=0
+  while [ $attempt -lt 3 ]; do
+    if ss -tlnp 2>/dev/null | grep -q ":${port}\b"; then
+      port=$((port + 1))
+      attempt=$((attempt + 1))
+    else
+      echo "$port"
+      return 0
+    fi
+  done
+  return 1
+}
+
+resolve_tor_port() {
+  local resolved_port
+  resolved_port=$(find_socks_port) || return 1
+  SOCKS_PORT="$resolved_port"
+}
 BOOTSTRAP_ENABLED="${TRI_BOOTSTRAP_ENABLED:-1}"
 PREFER_BOOTSTRAP="${TRI_PREFER_BOOTSTRAP:-1}"
 STAKE_ENABLED="${TRI_STAKE_ENABLED:-0}"
@@ -44,6 +68,11 @@ RPC_USER="${TRI_RPCUSER:-tri}"
 RPC_PASSWORD="${TRI_RPCPASSWORD:-tri}"
 RPC_PORT="${TRI_RPCPORT:-19112}"
 ADDNODE="${TRI_ADDNODE:-}"
+SEED_MODE="${TRI_SEED_MODE:-0}"
+TRI_SEED_ISOLATION="${TRI_SEED_ISOLATION:-0}"
+TRI_SEED_TRUSTED_PEERS="${TRI_SEED_TRUSTED_PEERS:-}"
+TRI_SEED_DISABLE_DISCOVERY="${TRI_SEED_DISABLE_DISCOVERY:-0}"
+SEED_STARTUP_DELAY="${TRI_SEED_STARTUP_DELAY:-0}"
 EXTERNAL_IP="${TRI_EXTERNAL_IP:-}"
 EXTRA_ARGS="${TRI_EXTRA_ARGS:-}"
 CANONICAL_RPC_URL="${TRI_CANONICAL_RPC_URL:-}"
@@ -76,8 +105,10 @@ BOOTSTRAP_ACTIVE=0
 RECOVERY_PERFORMED=0
 
 DEFAULT_BOOTSTRAP_SOURCES=(
+  "https://bootstrap.cryptographic-triangles.org/triangles-bootstrap.tar.gz"
+  "https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
+  "http://bootstrap.cryptographic-triangles.org/triangles-bootstrap.tar.gz"
   "http://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
-  "http://bootstrap.cryptographic-triangles.org:8080/tri-bootstrap.tar.gz"
 )
 
 TRI_PID=""
@@ -119,6 +150,12 @@ publish_static_metadata() {
   write_state_value "$ROLE_FILE" "$TRI_ROLE"
   write_state_value "$WALLET_EXPORT_FILE" "$TRI_WALLET_EXPORT_PATH"
 
+  local onion_addr
+  onion_addr=$(cat "$STATE_DIR/onion-address" 2>/dev/null || echo "")
+  if [ -z "$onion_addr" ] && [ -f "/tri/tor/node/hostname" ]; then
+    onion_addr=$(cat /tri/tor/node/hostname 2>/dev/null | tr -d ' \n' || echo "")
+  fi
+
   write_json_file "$CAPABILITIES_FILE" "$(jq -cn \
     --arg instanceId "$TRI_INSTANCE_ID" \
     --arg walletId "$TRI_WALLET_ID" \
@@ -129,7 +166,11 @@ publish_static_metadata() {
     --argjson reseedAllowed $( [ "$TRI_ALLOW_RESEED" = "1" ] && echo true || echo false ) \
     --argjson backupEnabled $( [ "$TRI_ALLOW_BACKUP_EXPORT" = "1" ] && echo true || echo false ) \
     --argjson canonicalCheck $( [ -n "$CANONICAL_RPC_URL" ] && echo true || echo false ) \
-    '{instanceId:$instanceId,walletId:$walletId,role:$role,writeOps:$writeOps,sendEnabled:$sendEnabled,unlockEnabled:$unlockEnabled,reseedAllowed:$reseedAllowed,backupEnabled:$backupEnabled,canonicalCheck:$canonicalCheck}')"
+    --argjson seedMode $( [ "$SEED_MODE" = "1" ] && echo true || echo false ) \
+    --argjson seedIsolation $( [ "$TRI_SEED_ISOLATION" = "1" ] && echo true || echo false ) \
+    --argjson seedDisableDiscovery $( [ "$TRI_SEED_DISABLE_DISCOVERY" = "1" ] && echo true || echo false ) \
+    --arg onionAddress "$onion_addr" \
+    '{instanceId:$instanceId,walletId:$walletId,role:$role,writeOps:$writeOps,sendEnabled:$sendEnabled,unlockEnabled:$unlockEnabled,reseedAllowed:$reseedAllowed,backupEnabled:$backupEnabled,canonicalCheck:$canonicalCheck,seedMode:$seedMode,seedIsolation:$seedIsolation,seedDisableDiscovery:$seedDisableDiscovery,onionAddress:$onionAddress}')"
 
   write_json_file "$PATHS_FILE" "$(jq -cn \
     --arg data "$DATA_DIR" \
@@ -487,10 +528,27 @@ CFG
 
   if [ "$TOR_ENABLED" = "1" ]; then
     cat >> "$CONF_FILE" <<CFG
-proxy=127.0.0.1:9050
+proxy=127.0.0.1:${SOCKS_PORT}
 listenonion=1
-tor=127.0.0.1:9050
+tor=127.0.0.1:${SOCKS_PORT}
+onion=127.0.0.1:${SOCKS_PORT}
 CFG
+  fi
+
+  # SPV node type
+  if [ "$NODE_TYPE" = "spv" ]; then
+    cat >> "$CONF_FILE" <<CFG
+prune=1
+prune=5000
+txindex=0
+addressindex=0
+spentinfo=0
+CFG
+    log "Configuring as SPV (pruned) node — lightweight wallet without full chain"
+  else
+    echo "txindex=1" >> "$CONF_FILE"
+    echo "addressindex=1" >> "$CONF_FILE"
+    echo "spentinfo=1" >> "$CONF_FILE"
   fi
 
   if [ "$STAKE_ENABLED" = "1" ]; then
@@ -512,12 +570,38 @@ CFG
     echo "externalip=$EXTERNAL_IP" >> "$CONF_FILE"
   fi
 
+  # Seed isolation: if TRI_SEED_ISOLATION=1, wipe stale peer data before starting
+  if [ "$SEED_MODE" = "1" ] && [ "$TRI_SEED_ISOLATION" = "1" ]; then
+    if [ -f "$DATA_DIR/peers.dat" ]; then
+      rm -f "$DATA_DIR/peers.dat"
+      log "Seed isolation: removed stale peers.dat to prevent self-contamination"
+    fi
+  fi
+
+  # Seed trusted peers: use explicitly configured trusted peers for seed mode
+  if [ "$SEED_MODE" = "1" ] && [ -n "$TRI_SEED_TRUSTED_PEERS" ]; then
+    OLDIFS="$IFS"
+    IFS=','
+    for tp in $TRI_SEED_TRUSTED_PEERS; do
+      echo "addnode=$tp" >> "$CONF_FILE"
+      echo "connect=$tp" >> "$CONF_FILE"
+    done
+    IFS="$OLDIFS"
+    log "Seed mode: using trusted peers for initial connection"
+  fi
+
   case "$MODE" in
     seed)
       cat >> "$CONF_FILE" <<CFG
 upnp=0
-discover=1
 CFG
+      if [ "$TRI_SEED_DISABLE_DISCOVERY" = "1" ]; then
+        echo "discover=0" >> "$CONF_FILE"
+        echo "listen=0" >> "$CONF_FILE"
+        log "Seed mode: discovery and listen disabled for isolation"
+      else
+        echo "discover=1" >> "$CONF_FILE"
+      fi
       ;;
     staking)
       echo "staking=1" >> "$CONF_FILE"
@@ -530,16 +614,56 @@ CFG
 start_tor() {
   [ "$TOR_ENABLED" = "1" ] || return 0
   if pgrep -x tor >/dev/null 2>&1; then
+    log "Tor already running"
     return 0
   fi
-  log "Starting Tor..."
+
+  [ -n "$SOCKS_PORT" ] || { warn "SOCKS_PORT not resolved — cannot start Tor."; return 1; }
+
+  log "Starting Tor with full hidden service configuration (SOCKS port ${SOCKS_PORT})..."
   mkdir -p /tri/tor
   chmod 700 /tri/tor || true
-  tor --RunAsDaemon 1 --SocksPort 9050 --DataDirectory /tri/tor >"$TOR_LOG" 2>&1 || warn "Tor failed to start; continuing without confirmed Tor health"
-  sleep 2
+
+  # Write torrc with hidden service for node port
+  cat > /tri/tor/torrc <<TORRC
+SocksPort ${SOCKS_PORT}
+HiddenServiceDir /tri/tor/node
+HiddenServicePort 24112 127.0.0.1:24112
+HiddenServiceVersion 3
+TORRC
+
+  log "Tor config written. Launching Tor daemon..."
+
+  tor --RunAsDaemon 1 -f /tri/tor/torrc --DataDirectory /tri/tor >"$TOR_LOG" 2>&1 &
+  sleep 5
+
   if ! pgrep -x tor >/dev/null 2>&1; then
-    warn "Tor does not appear to be running after startup"
+    warn "Tor failed to start. Check $TOR_LOG for details."
+    warn "Continuing without Tor — node may have reduced connectivity."
+    return 1
   fi
+
+  log "Tor running. Waiting for onion address to be published..."
+
+  # Wait for onion address to appear (hidden service publishes it after first boot)
+  local onion_file="/tri/tor/node/hostname"
+  local attempts=0
+  while [ "$attempts" -lt 20 ]; do
+    if [ -f "$onion_file" ] && [ -s "$onion_file" ]; then
+      local onion_addr
+      onion_addr=$(cat "$onion_file" 2>/dev/null | tr -d ' \n')
+      if [ -n "$onion_addr" ]; then
+        log "Tor onion address: $onion_addr"
+        echo "$onion_addr" > "$STATE_DIR/onion-address"
+        return 0
+      fi
+    fi
+    sleep 2
+    attempts=$((attempts + 1))
+  done
+
+  warn "Onion address not published yet. Tor is running but hidden service may still be initializing."
+  return 0
 }
 
 chain_present() {
@@ -550,6 +674,14 @@ chain_looks_sane() {
   chain_present || return 1
   local blk_size ldb_count
   blk_size=$(stat -c%s "$DATA_DIR/blk0001.dat" 2>/dev/null || echo 0)
+
+  # SPV mode: chain just needs to exist, don't enforce full chain size
+  if [ "$NODE_TYPE" = "spv" ]; then
+    [ "$blk_size" -ge 1048576 ] || return 1
+    return 0
+  fi
+
+  # Full node: enforce full chain requirements
   [ "$blk_size" -ge "$BOOTSTRAP_MIN_BLOCK_BYTES" ] || return 1
   if [ -d "$DATA_DIR/txleveldb" ]; then
     ldb_count=$(find "$DATA_DIR/txleveldb" -name '*.ldb' 2>/dev/null | wc -l)
@@ -561,7 +693,12 @@ chain_looks_sane() {
 }
 
 reset_chain_dirs() {
-  rm -rf "$DATA_DIR/txleveldb" "$DATA_DIR/database" "$DATA_DIR/blk0001.dat" "$DATA_DIR/peers.dat" "$DATA_DIR"/*.log 2>/dev/null || true
+  # For SPV: only wipe chain state, keep structure. For full node: full wipe.
+  if [ "$NODE_TYPE" = "spv" ]; then
+    rm -rf "$DATA_DIR/txleveldb" "$DATA_DIR/database" "$DATA_DIR/blk0001.dat" "$DATA_DIR/peers.dat" "$DATA_DIR/banlist.dat" 2>/dev/null || true
+  else
+    rm -rf "$DATA_DIR/txleveldb" "$DATA_DIR/database" "$DATA_DIR/blk0001.dat" "$DATA_DIR/peers.dat" "$DATA_DIR/*.log" "$DATA_DIR/banlist.dat" 2>/dev/null || true
+  fi
 }
 
 bootstrap_chain() {
@@ -606,7 +743,7 @@ bootstrap_chain() {
       set_status "bootstrapping" "Extracting bootstrap archive"
       write_bootstrap_progress "extracting"
       reset_chain_dirs
-      if tar xzf "$BOOTSTRAP_FILE" -C "$DATA_DIR" --strip-components=1; then
+      if tar xzf "$BOOTSTRAP_FILE" -C "$DATA_DIR"; then
         rm -f "$BOOTSTRAP_FILE"
         if chain_looks_sane; then
           BOOTSTRAP_ACTIVE=0
@@ -629,6 +766,15 @@ bootstrap_chain() {
   return 1
 }
 
+add_seed_startup_delay() {
+  # Sequential delay: if SEED_STARTUP_DELAY is set, wait before starting
+  # This prevents multiple seed containers from contaminating each other on restart
+  if [ "$SEED_MODE" = "1" ] && [ -n "$SEED_STARTUP_DELAY" ] && [ "$SEED_STARTUP_DELAY" -gt 0 ]; then
+    log "Seed mode: waiting ${SEED_STARTUP_DELAY}s before starting to avoid peer contamination..."
+    sleep "$SEED_STARTUP_DELAY"
+  fi
+}
+
 build_args() {
   TRI_ARGS=(
     "-datadir=$DATA_DIR"
@@ -640,6 +786,11 @@ build_args() {
     "-port=$TRI_PORT"
     "-printtoconsole"
   )
+
+  if [ "$NODE_TYPE" = "spv" ]; then
+    TRI_ARGS+=("-prune=5000" "-txindex=0")
+    log "SPV node: using pruned chain mode with reduced dbcache requirement"
+  fi
 
   if [ "$PREFER_BOOTSTRAP" = "1" ]; then
     split_sources
@@ -661,6 +812,7 @@ run_node() {
 
   while true; do
     build_args
+    add_seed_startup_delay
     set_status "starting" "Launching trianglesd"
     log "Starting Triangles node in $MODE mode..."
     "$TRI_BIN" "${TRI_ARGS[@]}" &
@@ -745,6 +897,7 @@ main() {
   fi
 
   require_binary
+  resolve_tor_port || { warn "Could not find available Tor port."; }
   write_config
   start_tor
 
@@ -757,7 +910,25 @@ main() {
     mark_ready
   fi
 
-  run_node
+  run_node &
+  NODE_PID=$!
+  start_wallet_ui
+  wait $NODE_PID
+  log "trianglesd exited — container staying alive for appliance access"
+  tail -f /dev/null &
+  wait $!
+}
+
+start_wallet_ui() {
+  if [ ! -f "$UI_DATA_DIR/server.mjs" ]; then
+    log "No wallet UI server found at $UI_DATA_DIR/server.mjs — skipping web UI start"
+    return
+  fi
+  log "Starting wallet web UI on port ${PORT:-4177}..."
+  cd "$UI_DATA_DIR"
+  node server.mjs &
+  UI_PID=$!
+  log "Wallet web UI started (PID $UI_PID)"
 }
 
 main "$@"
