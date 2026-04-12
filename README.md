@@ -91,6 +91,79 @@ environment:
   TRI_MAX_CONNECTIONS: "128"
 ```
 
+## Node type: Full vs SPV
+
+TRIdock supports two chain加载 modes — choose based on your use case:
+
+### Full node (default)
+**Loads the entire 12-year blockchain.** Required for staking. Higher disk usage (~2–5 GB), longer first startup as it syncs or bootstraps the full chain.
+
+```yaml
+environment:
+  TRI_NODE_TYPE: "full"   # default — full blockchain, can stake
+```
+
+- txindex=1, addressindex=1, spentinfo=1
+- Full peer discovery and connections
+- Can participate in staking
+- Requires adequate disk space and initial bootstrap or sync
+
+### SPV node
+**Lightweight pruned wallet.** Does NOT download the full chain. Fast startup (~seconds to 1 minute), uses minimal disk space. Perfect for casual users who just want to send/receive TRI without running a full node.
+
+```yaml
+environment:
+  TRI_NODE_TYPE: "spv"    # lightweight — pruned chain, no full sync needed
+```
+
+- prune=5000, txindex=0, addressindex=0, spentinfo=0
+- Chain sanity check is lenient (just needs existing bootstrap to be present)
+- Cannot stake (no full chain validation)
+- Can still send/receive and use the wallet UI
+- Ideal for: mobile wallets, testing, casual users, or machines with limited storage
+
+### Which should I use?
+
+| Use case | Node type |
+|----------|-----------|
+| Want to stake TRI | `full` |
+| Running a seed relay | `full` (seed mode) |
+| Casual wallet only | `spv` |
+| Minimal disk / old hardware | `spv` |
+| Don't want to wait for 12-year sync | `spv` |
+
+### SPV example compose
+
+```yaml
+services:
+  tridock:
+    image: samiahmed7777/tridock:latest
+    container_name: my-spv-wallet
+    restart: unless-stopped
+    ports:
+      - "24117:24112/tcp"
+      - "24117:24112/udp"
+      - "19117:19112/tcp"
+      - "4178:4177/tcp"
+    environment:
+      TRI_NODE_TYPE: "spv"
+      TRI_TOR_ENABLED: "1"
+      TRI_BOOTSTRAP_ENABLED: "1"
+      TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/triangles-bootstrap.tar.gz"
+      TRI_RPCUSER: "tri"
+      TRI_RPCPASSWORD: "my-secret-pass"
+      TRI_PORT: "24112"
+      TRI_RPCPORT: "19112"
+      TRI_ENABLE_WRITE_OPS: "1"
+      TRI_ALLOW_SEND_BROADCAST: "1"
+      TRI_ALLOW_WALLET_UNLOCK: "1"
+    volumes:
+      - tri_spv_data:/tri/data
+      - tri_spv_state:/tri/state
+      - tri_spv_backups:/tri/backups
+      - tri_spv_logs:/tri/logs
+```
+
 ### Staking node
 
 ```yaml
