@@ -743,7 +743,7 @@ bootstrap_chain() {
       set_status "bootstrapping" "Extracting bootstrap archive"
       write_bootstrap_progress "extracting"
       reset_chain_dirs
-      if tar xzf "$BOOTSTRAP_FILE" -C "$DATA_DIR"; then
+      if tar xzf "$BOOTSTRAP_FILE" -C "$DATA_DIR" --exclude=triangles.conf; then
         rm -f "$BOOTSTRAP_FILE"
         if chain_looks_sane; then
           BOOTSTRAP_ACTIVE=0
