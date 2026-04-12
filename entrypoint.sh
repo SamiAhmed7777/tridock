@@ -44,6 +44,10 @@ RPC_USER="${TRI_RPCUSER:-tri}"
 RPC_PASSWORD="${TRI_RPCPASSWORD:-tri}"
 RPC_PORT="${TRI_RPCPORT:-19112}"
 ADDNODE="${TRI_ADDNODE:-}"
+SEED_MODE="${TRI_SEED_MODE:-0}"
+TRI_SEED_ISOLATION="${TRI_SEED_ISOLATION:-0}"
+TRI_SEED_TRUSTED_PEERS="${TRI_SEED_TRUSTED_PEERS:-}"
+TRI_SEED_DISABLE_DISCOVERY="${TRI_SEED_DISABLE_DISCOVERY:-0}"
 EXTERNAL_IP="${TRI_EXTERNAL_IP:-}"
 EXTRA_ARGS="${TRI_EXTRA_ARGS:-}"
 CANONICAL_RPC_URL="${TRI_CANONICAL_RPC_URL:-}"
@@ -76,8 +80,10 @@ BOOTSTRAP_ACTIVE=0
 RECOVERY_PERFORMED=0
 
 DEFAULT_BOOTSTRAP_SOURCES=(
+  "https://bootstrap.cryptographic-triangles.org/triangles-bootstrap.tar.gz"
+  "https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
+  "http://bootstrap.cryptographic-triangles.org/triangles-bootstrap.tar.gz"
   "http://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
-  "http://bootstrap.cryptographic-triangles.org:8080/tri-bootstrap.tar.gz"
 )
 
 TRI_PID=""
@@ -129,7 +135,10 @@ publish_static_metadata() {
     --argjson reseedAllowed $( [ "$TRI_ALLOW_RESEED" = "1" ] && echo true || echo false ) \
     --argjson backupEnabled $( [ "$TRI_ALLOW_BACKUP_EXPORT" = "1" ] && echo true || echo false ) \
     --argjson canonicalCheck $( [ -n "$CANONICAL_RPC_URL" ] && echo true || echo false ) \
-    '{instanceId:$instanceId,walletId:$walletId,role:$role,writeOps:$writeOps,sendEnabled:$sendEnabled,unlockEnabled:$unlockEnabled,reseedAllowed:$reseedAllowed,backupEnabled:$backupEnabled,canonicalCheck:$canonicalCheck}')"
+    --argjson seedMode $( [ "$SEED_MODE" = "1" ] && echo true || echo false ) \
+    --argjson seedIsolation $( [ "$TRI_SEED_ISOLATION" = "1" ] && echo true || echo false ) \
+    --argjson seedDisableDiscovery $( [ "$TRI_SEED_DISABLE_DISCOVERY" = "1" ] && echo true || echo false ) \
+    '{instanceId:$instanceId,walletId:$walletId,role:$role,writeOps:$writeOps,sendEnabled:$sendEnabled,unlockEnabled:$unlockEnabled,reseedAllowed:$reseedAllowed,backupEnabled:$backupEnabled,canonicalCheck:$canonicalCheck,seedMode:$seedMode,seedIsolation:$seedIsolation,seedDisableDiscovery:$seedDisableDiscovery}')"
 
   write_json_file "$PATHS_FILE" "$(jq -cn \
     --arg data "$DATA_DIR" \
@@ -606,7 +615,7 @@ bootstrap_chain() {
       set_status "bootstrapping" "Extracting bootstrap archive"
       write_bootstrap_progress "extracting"
       reset_chain_dirs
-      if tar xzf "$BOOTSTRAP_FILE" -C "$DATA_DIR" --strip-components=1; then
+      if tar xzf "$BOOTSTRAP_FILE" -C "$DATA_DIR"; then
         rm -f "$BOOTSTRAP_FILE"
         if chain_looks_sane; then
           BOOTSTRAP_ACTIVE=0
