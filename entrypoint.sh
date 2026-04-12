@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 MODE="${TRI_MODE:-full}"
+NODE_TYPE="${TRI_NODE_TYPE:-full}"
 NODE_NAME="${TRI_NODE_NAME:-tridock}"
 DATA_DIR="${TRI_DATA_DIR:-/tri/data}"
 BOOTSTRAP_DIR="${TRI_BOOTSTRAP_DIR:-/tri/bootstrap}"
@@ -37,6 +38,29 @@ BOOTSTRAP_TIMEOUT="${TRI_BOOTSTRAP_TIMEOUT:-30}"
 BOOTSTRAP_MIN_BLOCK_BYTES="${TRI_BOOTSTRAP_MIN_BLOCK_BYTES:-100000000}"
 BOOTSTRAP_MIN_LDB_COUNT="${TRI_BOOTSTRAP_MIN_LDB_COUNT:-300}"
 TOR_ENABLED="${TRI_TOR_ENABLED:-1}"
+TOR_SOCKS_PORT="${TRI_TOR_SOCKS_PORT:-9050}"
+
+# Determine available Tor SOCKS port early, so write_config and start_tor can both use it
+find_socks_port() {
+  local port="${TOR_SOCKS_PORT:-9050}"
+  local attempt=0
+  while [ $attempt -lt 3 ]; do
+    if ss -tlnp 2>/dev/null | grep -q ":${port}\b"; then
+      port=$((port + 1))
+      attempt=$((attempt + 1))
+    else
+      echo "$port"
+      return 0
+    fi
+  done
+  return 1
+}
+
+resolve_tor_port() {
+  local resolved_port
+  resolved_port=$(find_socks_port) || return 1
+  SOCKS_PORT="$resolved_port"
+}
 BOOTSTRAP_ENABLED="${TRI_BOOTSTRAP_ENABLED:-1}"
 PREFER_BOOTSTRAP="${TRI_PREFER_BOOTSTRAP:-1}"
 STAKE_ENABLED="${TRI_STAKE_ENABLED:-0}"
@@ -504,10 +528,10 @@ CFG
 
   if [ "$TOR_ENABLED" = "1" ]; then
     cat >> "$CONF_FILE" <<CFG
-proxy=127.0.0.1:9050
+proxy=127.0.0.1:${SOCKS_PORT}
 listenonion=1
-tor=127.0.0.1:9050
-onion=127.0.0.1:9050
+tor=127.0.0.1:${SOCKS_PORT}
+onion=127.0.0.1:${SOCKS_PORT}
 CFG
   fi
 
@@ -594,24 +618,23 @@ start_tor() {
     return 0
   fi
 
-  log "Starting Tor with full hidden service configuration..."
+  [ -n "$SOCKS_PORT" ] || { warn "SOCKS_PORT not resolved — cannot start Tor."; return 1; }
+
+  log "Starting Tor with full hidden service configuration (SOCKS port ${SOCKS_PORT})..."
   mkdir -p /tri/tor
   chmod 700 /tri/tor || true
 
-  # Write full torrc with hidden service for node port
-  cat > /tri/tor/torrc <<'TORRC'
-SocksPort 9050
-SocksPort 127.0.0.1:9050
+  # Write torrc with hidden service for node port
+  cat > /tri/tor/torrc <<TORRC
+SocksPort ${SOCKS_PORT}
 HiddenServiceDir /tri/tor/node
 HiddenServicePort 24112 127.0.0.1:24112
 HiddenServiceVersion 3
-CircuitDuration 10
-NumEntryGuards 3
 TORRC
 
   log "Tor config written. Launching Tor daemon..."
 
-  tor --RunAsDaemon 1 --DataDirectory /tri/tor --TorrcFile /tri/tor/torrc >"$TOR_LOG" 2>&1 &
+  tor --RunAsDaemon 1 -f /tri/tor/torrc --DataDirectory /tri/tor >"$TOR_LOG" 2>&1 &
   sleep 5
 
   if ! pgrep -x tor >/dev/null 2>&1; then
@@ -874,6 +897,7 @@ main() {
   fi
 
   require_binary
+  resolve_tor_port || { warn "Could not find available Tor port."; }
   write_config
   start_tor
 
