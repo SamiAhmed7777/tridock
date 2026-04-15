@@ -743,10 +743,10 @@ bootstrap_chain() {
     write_bootstrap_progress "starting"
     rm -f "$BOOTSTRAP_FILE"
     local wget_proxy_args=""
-    if [ "$TOR_ENABLED" = "1" ]; then
-      wget_proxy_args="-e use_proxy=yes -e http_proxy=socks5h://127.0.0.1:${SOCKS_PORT} -e https_proxy=socks5h://127.0.0.1:${SOCKS_PORT}"
+    # Use Tor proxy only for .onion bootstrap sources; public HTTPS is downloaded directly
+    if [[ "$source" == *.onion ]] && [ "$TOR_ENABLED" = "1" ]; then
+      wget_proxy_args="--proxy=on --proxy=socks5://127.0.0.1:${SOCKS_PORT}"
     fi
-    # shellcheck disable=SC2086
     if wget $wget_proxy_args --progress=dot:giga --show-progress --tries=1 --timeout="$BOOTSTRAP_TIMEOUT" -O "$BOOTSTRAP_FILE" "$source" 2>&1 | while IFS= read -r line; do
       echo "$line"
       case "$line" in
@@ -801,6 +801,7 @@ build_args() {
     "-listen=1"
     "-bind=0.0.0.0:$TRI_PORT"
     "-port=$TRI_PORT"
+    "-nobootstrap"
     "-printtoconsole"
   )
 
