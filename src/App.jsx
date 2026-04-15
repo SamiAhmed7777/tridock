@@ -1,4 +1,4 @@
-import React, { Component, useEffect, useMemo, useState } from 'react'
+import React, { Component, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import triLogo from './assets/triangles-wordmark.png'
 
@@ -156,11 +156,12 @@ function downloadDataUrl(url, filename) {
   a.remove()
 }
 
-function NavTabs({ active, onChange }) {
+function NavTabs({ active, onChange, badges = {} }) {
   const tabs = [
     ['overview', 'Overview'],
     ['receive', 'Receive'],
     ['send', 'Send'],
+    ['messages', 'Messages'],
     ['transactions', 'Transactions'],
     ['addresses', 'Address Book'],
     ['backup', 'Backup'],
@@ -180,9 +181,18 @@ function NavTabs({ active, onChange }) {
             padding: '9px 14px',
             cursor: 'pointer',
             fontWeight: 600,
+            position: 'relative',
           }}
         >
           {label}
+          {badges[key] > 0 ? (
+            <span style={{
+              position: 'absolute', top: -4, right: -4,
+              background: '#c1172f', color: '#fff', fontSize: 10, fontWeight: 700,
+              borderRadius: 999, minWidth: 18, height: 18, display: 'inline-flex',
+              alignItems: 'center', justifyContent: 'center', padding: '0 5px',
+            }}>{badges[key]}</span>
+          ) : null}
         </button>
       ))}
     </div>
@@ -265,6 +275,14 @@ export default function App() {
   const [addNodeForm, setAddNodeForm] = useState({ name: '', url: '', user: '', password: '' })
   const [addNodeStatus, setAddNodeStatus] = useState('')
   const [backups, setBackups] = useState([])
+  const [msgInbox, setMsgInbox] = useState([])
+  const [msgOutbox, setMsgOutbox] = useState([])
+  const [msgTab, setMsgTab] = useState('inbox')
+  const [selectedMessage, setSelectedMessage] = useState(null)
+  const [composeForm, setComposeForm] = useState({ from: '', to: '', text: '' })
+  const [msgStatus, setMsgStatus] = useState('')
+  const [msgKeys, setMsgKeys] = useState([])
+  const [msgUnreadCount, setMsgUnreadCount] = useState(0)
 
   // Tick wallet unlock countdown every second; when it hits 0, refresh capabilities
   const countdownRef = useRef(null)
@@ -324,8 +342,9 @@ export default function App() {
         const nodesData = await nodesRes.json().catch(() => null)
         const systemData = await systemRes.json().catch(() => null)
 
-        // Load backups separately so failures don't block main UI
+        // Load backups and messages separately so failures don't block main UI
         loadBackups()
+        loadMessages()
 
         if (cancelled) return
 
@@ -408,7 +427,8 @@ export default function App() {
     return () => { cancelled = true }
   }, [selectedReceive?.address])
 
-  const walletMode = summary?.rpcReady ? 'full wallet mode' : 'warmup mode'
+  const isLightMode = health?.mode === 'light' || system?.mode === 'light' || nodeState?.mode === 'light'
+  const walletMode = isLightMode ? 'light wallet' : (summary?.rpcReady ? 'full wallet mode' : 'warmup mode')
   const canonical = summary?.canonical || { enabled: false }
   const featureFlags = summary?.featureFlags || {}
   const capabilities = summary?.capabilities || {}
@@ -490,6 +510,104 @@ export default function App() {
       const data = await res.json()
       if (data?.files) setBackups(data.files)
     } catch { /* ignore backup list errors */ }
+  }
+
+  async function loadMessages() {
+    try {
+      const [inboxRes, outboxRes, keysRes] = await Promise.all([
+        fetch('/api/messages/inbox'),
+        fetch('/api/messages/outbox'),
+        fetch('/api/messages/keys'),
+      ])
+      const inboxData = await inboxRes.json().catch(() => null)
+      const outboxData = await outboxRes.json().catch(() => null)
+      const keysData = await keysRes.json().catch(() => null)
+      if (inboxData?.messages) setMsgInbox(inboxData.messages)
+      if (outboxData?.messages) setMsgOutbox(outboxData.messages)
+      if (keysData?.keys) setMsgKeys(keysData.keys)
+      // Count unread (messages with no "read" timestamp or flagged unread)
+      if (Array.isArray(inboxData?.messages)) {
+        const unread = inboxData.messages.filter((m) => !m.read).length
+        setMsgUnreadCount(unread)
+      }
+    } catch { /* ignore messaging errors — feature may not be available */ }
+  }
+
+  async function handleSendMessage() {
+    if (!composeForm.to || !composeForm.text) {
+      setMsgStatus('Recipient address and message are required')
+      return
+    }
+    if (composeForm.text.length > 4096) {
+      setMsgStatus('Message exceeds 4096 byte limit')
+      return
+    }
+    try {
+      const endpoint = composeForm.from ? '/api/messages/send' : '/api/messages/send-anon'
+      const body = composeForm.from
+        ? { from: composeForm.from, to: composeForm.to, message: composeForm.text }
+        : { to: composeForm.to, message: composeForm.text }
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json().catch(() => null)
+      if (data?.ok) {
+        setMsgStatus(data.result || 'Message sent successfully')
+        setComposeForm({ from: composeForm.from, to: '', text: '' })
+        loadMessages()
+      } else {
+        setMsgStatus(data?.error || data?.result || 'Send failed')
+      }
+    } catch (error) {
+      setMsgStatus(error?.message || 'Send failed')
+    }
+  }
+
+  async function handleToggleReceive(address, currentlyOn) {
+    try {
+      const res = await fetch('/api/messages/keys/receive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, enable: !currentlyOn }),
+      })
+      const data = await res.json().catch(() => null)
+      setMsgStatus(data?.result || (data?.ok ? 'Updated' : 'Failed'))
+      loadMessages()
+    } catch (error) {
+      setMsgStatus(error?.message || 'Failed to update key')
+    }
+  }
+
+  async function handleScanChain() {
+    setMsgStatus('Scanning chain for public keys...')
+    try {
+      const res = await fetch('/api/messages/scan-chain', { method: 'POST' })
+      const data = await res.json().catch(() => null)
+      setMsgStatus(data?.result || (data?.ok ? 'Chain scan complete' : 'Scan failed'))
+      loadMessages()
+    } catch (error) {
+      setMsgStatus(error?.message || 'Chain scan failed')
+    }
+  }
+
+  async function handleLookupPubkey(address) {
+    try {
+      const res = await fetch('/api/messages/pubkey', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address }),
+      })
+      const data = await res.json().catch(() => null)
+      if (data?.found) {
+        setMsgStatus(`Public key found (${data.source || 'unknown source'})`)
+      } else {
+        setMsgStatus('Public key not found — recipient must have transacted on-chain, or use "Scan chain"')
+      }
+    } catch (error) {
+      setMsgStatus(error?.message || 'Pubkey lookup failed')
+    }
   }
 
   async function handleSaveLabel(address) {
@@ -684,14 +802,16 @@ export default function App() {
         </Card>
       </div>
 
-      <Card title="Current node state" subtitle="The wallet stays useful even while the node is bootstrapping or warming up" tone="accent">
+      <Card title={isLightMode ? 'Remote node' : 'Current node state'} subtitle={isLightMode ? 'Connected to a remote TRIdock full node — no local blockchain' : 'The wallet stays useful even while the node is bootstrapping or warming up'} tone="accent">
         <div style={{ display: 'grid', gap: 8 }}>
+          <InfoRow label="Mode" value={isLightMode ? 'Light wallet' : 'Full node'} />
           <InfoRow label="Status" value={nodeState?.status || 'unknown'} />
           <InfoRow label="Reason" value={nodeState?.reason || summaryError || 'Waiting for node status...'} />
-          <InfoRow label="Bootstrap source" value={nodeState?.bootstrapSource || '—'} />
-          <InfoRow label="Bootstrap progress" value={nodeState?.bootstrapProgress || '—'} />
-          <InfoRow label="Local height" value={nodeState?.localHeight || '—'} />
-          <InfoRow label="Canonical status" value={nodeState?.canonicalStatus || 'disabled'} />
+          {!isLightMode && <InfoRow label="Bootstrap source" value={nodeState?.bootstrapSource || '—'} />}
+          {!isLightMode && <InfoRow label="Bootstrap progress" value={nodeState?.bootstrapProgress || '—'} />}
+          <InfoRow label={isLightMode ? 'Remote height' : 'Local height'} value={summary?.blocks || nodeState?.localHeight || '—'} />
+          {!isLightMode && <InfoRow label="Canonical status" value={nodeState?.canonicalStatus || 'disabled'} />}
+          {isLightMode && <InfoRow label="Active node" value={nodes.find((n) => n.active)?.name || '—'} />}
         </div>
       </Card>
     </div>
@@ -932,13 +1052,15 @@ export default function App() {
 
   const debugPanel = (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-      <Card title="Canonical chain view" subtitle="Wallet and node truth should stay aligned with the chain you actually trust">
+      <Card title={isLightMode ? 'Remote node view' : 'Canonical chain view'} subtitle={isLightMode ? 'Light wallet — all data from remote node' : 'Wallet and node truth should stay aligned with the chain you actually trust'}>
         <div style={{ display: 'grid', gap: 8 }}>
-          <InfoRow label="Canonical verification" value={canonical.enabled ? (canonical.matched ? 'matched' : 'enabled but not matched') : 'disabled'} />
-          <InfoRow label="Canonical height" value={canonical.canonicalHeight ?? nodeState?.canonicalHeight ?? '—'} />
-          <InfoRow label="Canonical best block" value={formatHash(canonical.canonicalBestblock || nodeState?.canonicalBestblock)} mono />
-          <InfoRow label="Local best block" value={formatHash(summary?.bestblock || nodeState?.localBestblock)} mono />
+          <InfoRow label="Mode" value={isLightMode ? 'Light wallet' : 'Full node'} />
+          {!isLightMode && <InfoRow label="Canonical verification" value={canonical.enabled ? (canonical.matched ? 'matched' : 'enabled but not matched') : 'disabled'} />}
+          {!isLightMode && <InfoRow label="Canonical height" value={canonical.canonicalHeight ?? nodeState?.canonicalHeight ?? '—'} />}
+          {!isLightMode && <InfoRow label="Canonical best block" value={formatHash(canonical.canonicalBestblock || nodeState?.canonicalBestblock)} mono />}
+          <InfoRow label={isLightMode ? 'Remote best block' : 'Local best block'} value={formatHash(summary?.bestblock || nodeState?.localBestblock)} mono />
           <InfoRow label="RPC endpoint" value={health?.rpcUrl || '—'} />
+          {isLightMode && <InfoRow label="Active node" value={nodes.find((n) => n.active)?.name || '—'} />}
         </div>
       </Card>
 
@@ -954,16 +1076,173 @@ export default function App() {
       </Card>
       <Card title="Container / system" subtitle="Runtime environment and Docker metadata">
         <div style={{ display: 'grid', gap: 8 }}>
+          <InfoRow label="Mode" value={system?.mode || 'full'} />
           <InfoRow label="Container" value={system?.inContainer ? `yes (${system.containerId || 'running'})` : 'not detected'} />
           <InfoRow label="Uptime" value={system?.uptimeHuman || '—'} />
           {system?.memUsage && system?.memLimit ? (
             <InfoRow label="Memory" value={`${system.memUsage}MB / ${system.memLimit}MB`} />
           ) : <InfoRow label="Memory" value="—" />}
           <InfoRow label="Node.js" value={system?.nodeVersion || '—'} />
-          <InfoRow label="TRI version" value={system?.triVersion || '—'} />
+          {!isLightMode && <InfoRow label="TRI version" value={system?.triVersion || '—'} />}
           <InfoRow label="Platform" value={system?.platform || '—'} />
         </div>
       </Card>
+    </div>
+  )
+
+  const currentMessages = msgTab === 'inbox' ? msgInbox : msgOutbox
+  const msgFromAddresses = useMemo(() => {
+    const addrs = Array.isArray(summary?.received) ? summary.received.map((r) => r.address) : []
+    // Also include keys that have receive enabled
+    for (const k of msgKeys) {
+      if (!addrs.includes(k.address)) addrs.push(k.address)
+    }
+    return addrs
+  }, [summary?.received, msgKeys])
+
+  const messagesPanel = (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gap: 16 }}>
+        <Card title="Messages" subtitle="Encrypted P2P messaging via the Triangles smessage protocol">
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            {['inbox', 'outbox', 'compose'].map((tab) => (
+              <button key={tab} onClick={() => { setMsgTab(tab); setSelectedMessage(null); setMsgStatus('') }}
+                style={{ border: '1px solid #414955', background: msgTab === tab ? '#2a3140' : '#171a20', color: '#eef2f7', borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+                {tab === 'inbox' ? `Inbox (${msgInbox.length})` : tab === 'outbox' ? `Outbox (${msgOutbox.length})` : 'Compose'}
+              </button>
+            ))}
+          </div>
+
+          {msgTab === 'compose' ? (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, color: '#aeb7c4', marginBottom: 4 }}>From address (leave empty for anonymous)</div>
+                <select value={composeForm.from} onChange={(e) => setComposeForm((f) => ({ ...f, from: e.target.value }))}
+                  style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}>
+                  <option value="">Anonymous (no sender identity)</option>
+                  {msgFromAddresses.map((addr) => (
+                    <option key={addr} value={addr}>{shortAddress(addr)}</option>
+                  ))}
+                </select>
+              </div>
+              <Field label="To address" value={composeForm.to} onChange={(e) => setComposeForm((f) => ({ ...f, to: e.target.value }))} placeholder="Recipient TRI address" />
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <div style={{ fontSize: 12, color: '#aeb7c4' }}>Message</div>
+                  <div style={{ fontSize: 11, color: composeForm.text.length > 4096 ? '#ff7d7d' : '#aeb7c4' }}>{composeForm.text.length} / 4096</div>
+                </div>
+                <textarea value={composeForm.text} onChange={(e) => setComposeForm((f) => ({ ...f, text: e.target.value }))}
+                  placeholder="Type your encrypted message..."
+                  rows={6}
+                  style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '8px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <ActionButton tone="ok" onClick={handleSendMessage} disabled={!composeForm.to || !composeForm.text || composeForm.text.length > 4096}>
+                  {composeForm.from ? 'Send encrypted' : 'Send anonymous'}
+                </ActionButton>
+                {composeForm.to && (
+                  <ActionButton onClick={() => handleLookupPubkey(composeForm.to)}>Check pubkey</ActionButton>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {currentMessages.length === 0 ? (
+                <div style={{ color: '#aeb7c4', padding: 12 }}>
+                  {msgTab === 'inbox' ? 'No messages in inbox. Messages are retained for 48 hours on the network.' : 'No sent messages.'}
+                </div>
+              ) : currentMessages.map((msg, i) => (
+                <div key={i} onClick={() => setSelectedMessage(msg)}
+                  style={{
+                    padding: 12, borderRadius: 10, cursor: 'pointer',
+                    border: selectedMessage === msg ? '1px solid #5a7ab6' : '1px solid #343942',
+                    background: selectedMessage === msg ? '#1a2330' : '#181b20',
+                  }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>
+                      {msgTab === 'inbox'
+                        ? (msg.from === 'anon' ? <span style={{ color: '#b4a7ff' }}>Anonymous</span> : shortAddress(msg.from))
+                        : shortAddress(msg.to)}
+                    </div>
+                    <span style={{ color: '#aeb7c4', fontSize: 12 }}>{formatTime(msg.sent || msg.received)}</span>
+                  </div>
+                  <div style={{ marginTop: 6, color: '#c7d0dc', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {msg.text || '(empty message)'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card title="Messaging keys" subtitle="Addresses enabled for receiving encrypted messages">
+          <div style={{ display: 'grid', gap: 8 }}>
+            {msgKeys.length === 0 ? (
+              <div style={{ color: '#aeb7c4' }}>No messaging keys loaded. Wallet may need to be unlocked.</div>
+            ) : msgKeys.map((key) => (
+              <div key={key.address} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: 8, borderRadius: 8, background: '#181b20', border: '1px solid #343942' }}>
+                <div>
+                  <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 12, color: '#cdd6e2', wordBreak: 'break-all' }}>{key.address}</div>
+                  <div style={{ fontSize: 11, color: '#aeb7c4', marginTop: 2 }}>
+                    Receive: {key.receiveOn ? <span style={{ color: '#8df0b1' }}>on</span> : <span style={{ color: '#ff8b9b' }}>off</span>}
+                    {' · '}Anon: {key.anonOn ? <span style={{ color: '#8df0b1' }}>on</span> : <span style={{ color: '#aeb7c4' }}>off</span>}
+                    {key.label ? ` · ${key.label}` : ''}
+                  </div>
+                </div>
+                <button onClick={() => handleToggleReceive(key.address, key.receiveOn)}
+                  style={{ background: key.receiveOn ? '#3a2020' : '#1a3020', color: key.receiveOn ? '#ff8b9b' : '#8df0b1', border: '1px solid #404652', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>
+                  {key.receiveOn ? 'Disable' : 'Enable'}
+                </button>
+              </div>
+            ))}
+            <ActionButton onClick={handleScanChain}>Scan chain for public keys</ActionButton>
+          </div>
+        </Card>
+      </div>
+
+      <div style={{ display: 'grid', gap: 16 }}>
+        <Card title="Message detail" subtitle={selectedMessage ? (msgTab === 'inbox' ? 'Received message' : 'Sent message') : 'Select a message to view'} tone={selectedMessage ? 'ok' : undefined}>
+          {selectedMessage ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <InfoRow label="From" value={selectedMessage.from === 'anon' ? 'Anonymous' : (selectedMessage.from || '—')} mono />
+              <InfoRow label="To" value={selectedMessage.to || '—'} mono />
+              {selectedMessage.sent && <InfoRow label="Sent" value={formatTime(selectedMessage.sent)} />}
+              {selectedMessage.received && <InfoRow label="Received" value={formatTime(selectedMessage.received)} />}
+              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: '#111419', border: '1px solid #2d323c', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#edf2f7', fontSize: 13, lineHeight: 1.6, minHeight: 80 }}>
+                {selectedMessage.text || '(empty message)'}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <ActionButton onClick={() => { setMsgTab('compose'); setComposeForm((f) => ({ ...f, to: selectedMessage.from === 'anon' ? '' : (selectedMessage.from || ''), text: '' })) }}
+                  disabled={selectedMessage.from === 'anon'}>
+                  Reply
+                </ActionButton>
+                <ActionButton onClick={() => {
+                  try { navigator.clipboard.writeText(selectedMessage.text || '') } catch {}
+                }}>Copy message</ActionButton>
+              </div>
+            </div>
+          ) : (
+            <div style={{ color: '#aeb7c4', padding: 16, textAlign: 'center' }}>
+              Select a message from the inbox or outbox to view its contents here.
+            </div>
+          )}
+        </Card>
+
+        <Card title="Messaging info" subtitle="How secure messaging works" tone="accent">
+          <div style={{ display: 'grid', gap: 8 }}>
+            <InfoRow label="Protocol" value="smessage (ShadowCoin)" />
+            <InfoRow label="Encryption" value="ECDH + AES" />
+            <InfoRow label="Max message" value="4,096 bytes" />
+            <InfoRow label="Retention" value="48 hours on network" />
+            <InfoRow label="Status" value={capabilities?.messaging?.ready ? 'Ready' : (capabilities?.messaging?.available ? 'Available (unlock wallet to read)' : 'Disabled')} />
+            {capabilities?.messaging?.blockedReasons?.length > 0 && (
+              <InfoRow label="Blocked" value={capabilities.messaging.blockedReasons.join(', ')} />
+            )}
+          </div>
+        </Card>
+      </div>
+      {msgStatus ? <div style={{ gridColumn: '1 / -1', marginTop: 4, padding: 10, borderRadius: 8, background: '#1a1e26', border: '1px solid #343942', color: '#cdd6e2', fontSize: 13 }}>{msgStatus}</div> : null}
     </div>
   )
 
@@ -971,6 +1250,7 @@ export default function App() {
     overview: overviewPanel,
     receive: receivePanel,
     send: sendPanel,
+    messages: messagesPanel,
     transactions: transactionsPanel,
     addresses: addressesPanel,
     backup: backupPanel,
@@ -987,7 +1267,7 @@ export default function App() {
                 <img src={triLogo} alt="Triangles logo" style={{ height: 42, width: 'auto', display: 'block', filter: 'drop-shadow(0 8px 18px rgba(0,0,0,.35))' }} />
                 <div>
                   <div style={{ fontSize: 22, fontWeight: 700 }}>TRIdock Web Wallet</div>
-                  <div style={{ color: '#aeb7c4', marginTop: 4 }}>A full Docker-based Triangles wallet with live controls, clear readiness, and real node visibility</div>
+                  <div style={{ color: '#aeb7c4', marginTop: 4 }}>{isLightMode ? 'Light wallet connected to a remote Triangles node' : 'A full Docker-based Triangles wallet with live controls, clear readiness, and real node visibility'}</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1018,8 +1298,8 @@ export default function App() {
                 >
                   +
                 </button>
-                <StatusPill>{walletMode}</StatusPill>
-                <StatusPill color="#ffd38a" background="rgba(255,211,138,.12)">{nodeState?.status || 'unknown node state'}</StatusPill>
+                <StatusPill color={isLightMode ? '#b4a7ff' : undefined} background={isLightMode ? 'rgba(180,167,255,.12)' : undefined}>{walletMode}</StatusPill>
+                <StatusPill color="#ffd38a" background="rgba(255,211,138,.12)">{isLightMode ? 'remote node' : (nodeState?.status || 'unknown node state')}</StatusPill>
                 {health?.writeOpsEnabled ? <StatusPill color="#8df0b1" background="rgba(97,214,128,.12)">guarded writes enabled</StatusPill> : null}
                 {canonical?.enabled ? (
                   <StatusPill color={canonical.matched ? '#8df0b1' : '#ffb3b3'} background={canonical.matched ? 'rgba(97,214,128,.12)' : 'rgba(255,125,125,.14)'}>
@@ -1093,7 +1373,7 @@ export default function App() {
           ) : null}
 
           <div style={{ padding: 18 }}>
-            <NavTabs active={activeTab} onChange={setActiveTab} />
+            <NavTabs active={activeTab} onChange={setActiveTab} badges={{ messages: msgUnreadCount }} />
             {panelByTab[activeTab]}
             {summaryError ? <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: '#23161a', border: '1px solid #6a3943', color: '#ffd7de' }}><strong>RPC note:</strong> {summaryError}</div> : null}
           </div>

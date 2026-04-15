@@ -3,6 +3,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs/promises'
 import crypto from 'node:crypto'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+
+const execFileAsync = promisify(execFile)
 
 const app = express()
 const PORT = process.env.PORT || 4177
@@ -30,6 +34,9 @@ const requireUnlockForSend = process.env.TRI_REQUIRE_UNLOCK_FOR_SEND !== '0'
 const allowSendBroadcast = process.env.TRI_ALLOW_SEND_BROADCAST === '1'
 const allowWalletUnlock = process.env.TRI_ALLOW_WALLET_UNLOCK === '1'
 const unlockTimeoutSeconds = Number(process.env.TRI_WALLET_UNLOCK_TIMEOUT || '180')
+const triMode = process.env.TRI_MODE || 'full'
+const isLightMode = triMode === 'light'
+const allowSmsg = process.env.TRI_ALLOW_SMSG !== '0'
 
 // Multi-node support
 const nodesFile = path.join(dataDir, 'nodes.json')
@@ -132,7 +139,28 @@ async function readNodeState() {
   }
 }
 
+const torSocksProxy = process.env.TRI_TOR_SOCKS || '127.0.0.1:9050'
+
+function isOnionUrl(url) {
+  try { return new URL(url).hostname.endsWith('.onion') } catch { return false }
+}
+
+async function rpcCallViaTor(url, user, password, method, params = []) {
+  const body = JSON.stringify({ jsonrpc: '1.0', id: method, method, params })
+  const args = ['--socks5-hostname', torSocksProxy, '-s', '--max-time', '30', '-H', 'Content-Type: application/json']
+  if (user || password) args.push('-u', `${user}:${password}`)
+  args.push('-d', body, url)
+
+  const { stdout } = await execFileAsync('curl', args)
+  const payload = JSON.parse(stdout)
+  if (payload.error) throw new Error(payload.error.message || 'RPC error')
+  return payload.result
+}
+
 async function rpcCall(url, user, password, method, params = []) {
+  // Route .onion URLs through Tor SOCKS proxy via curl
+  if (isOnionUrl(url)) return rpcCallViaTor(url, user, password, method, params)
+
   const headers = { 'Content-Type': 'application/json' }
   if (user || password) {
     headers.Authorization = `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`
@@ -219,8 +247,9 @@ async function readWalletStatusInfo() {
 async function buildCapabilities(nodeState) {
   const walletMeta = await readWalletStatusInfo()
   const exportReady = Boolean(walletExportPath) && isAllowedExportSource(walletExportPath)
-  const nodeReady = !['bootstrapping', 'bootstrap', 'reseed'].includes(String(nodeState?.status || '').toLowerCase())
-  const canonicalMismatch = String(nodeState?.canonicalStatus || '').toLowerCase().includes('mismatch')
+  // In light mode the node is always "ready" — readiness is determined by remote RPC connectivity
+  const nodeReady = isLightMode || !['bootstrapping', 'bootstrap', 'reseed'].includes(String(nodeState?.status || '').toLowerCase())
+  const canonicalMismatch = !isLightMode && String(nodeState?.canonicalStatus || '').toLowerCase().includes('mismatch')
   const sendBlockedReasons = []
 
   if (!enableWriteOps) sendBlockedReasons.push('write-ops-disabled')
@@ -258,17 +287,35 @@ async function buildCapabilities(nodeState) {
       blockedReasons: allowWalletUnlock ? (walletPassphrase ? [] : ['wallet-passphrase-not-configured']) : ['wallet-unlock-disabled'],
       timeoutSeconds: toPositiveInteger(unlockTimeoutSeconds, 180),
     },
+    messaging: {
+      available: allowSmsg,
+      ready: allowSmsg && nodeReady && !canonicalMismatch,
+      requiresUnlock: true,
+      blockedReasons: (() => {
+        const reasons = []
+        if (!allowSmsg) reasons.push('messaging-disabled')
+        if (!nodeReady) reasons.push('node-not-ready')
+        if (canonicalMismatch) reasons.push('canonical-mismatch')
+        if (walletMeta.encrypted && walletMeta.locked) reasons.push('wallet-locked-for-reading')
+        return reasons
+      })(),
+    },
   }
 }
 
 app.use(express.json())
 
 app.get('/api/health', async (_req, res) => {
-  const nodeState = await readNodeState()
-  res.json({ ok: true, rpcUrl, canonicalEnabled: Boolean(canonicalUrl), nodeState, writeOpsEnabled: enableWriteOps })
+  const nodeState = isLightMode
+    ? { status: 'running', reason: 'Light mode — using remote node' }
+    : await readNodeState()
+  res.json({ ok: true, rpcUrl, mode: triMode, canonicalEnabled: Boolean(canonicalUrl), nodeState, writeOpsEnabled: enableWriteOps })
 })
 
 app.get('/api/node/state', async (_req, res) => {
+  if (isLightMode) {
+    return res.json({ status: 'running', reason: 'Light mode — using remote node', mode: 'light' })
+  }
   res.json(await readNodeState())
 })
 
@@ -313,6 +360,7 @@ app.get('/api/system', async (_req, res) => {
   res.json({
     inContainer,
     containerId,
+    mode: triMode,
     uptimeSeconds,
     uptimeHuman: uptimeSeconds > 0 ? `${Math.floor(uptimeSeconds / 86400)}d ${Math.floor((uptimeSeconds % 86400) / 3600)}h ${Math.floor((uptimeSeconds % 3600) / 60)}m` : null,
     memLimit: memLimit ? Math.round(memLimit / 1024 / 1024) : null,
@@ -330,7 +378,9 @@ app.get('/api/wallet/labels', async (_req, res) => {
 })
 
 app.get('/api/wallet/contracts', async (_req, res) => {
-  const nodeState = await readNodeState()
+  const nodeState = isLightMode
+    ? { status: 'running', reason: 'Light mode — using remote node', mode: 'light' }
+    : await readNodeState()
   const capabilities = await buildCapabilities(nodeState)
   res.json({
     ok: true,
@@ -375,6 +425,14 @@ app.get('/api/wallet/contracts', async (_req, res) => {
       ready: capabilities.unlock.ready,
       blockedReasons: capabilities.unlock.blockedReasons,
       timeoutSeconds: capabilities.unlock.timeoutSeconds,
+    },
+    messaging: {
+      available: capabilities.messaging.available,
+      ready: capabilities.messaging.ready,
+      requiresUnlock: capabilities.messaging.requiresUnlock,
+      blockedReasons: capabilities.messaging.blockedReasons,
+      reason: capabilities.messaging.available ? 'Encrypted P2P messaging via smessage protocol' : 'Secure messaging is disabled',
+      limits: { maxMessageBytes: 4096, retentionSeconds: 172800 },
     },
   })
 })
@@ -754,12 +812,15 @@ app.get('/api/wallet/features', async (_req, res) => {
       { key: 'backupExport', label: 'Backup/export', status: capabilities.backup.ready ? 'live' : 'guarded' },
       { key: 'send', label: 'Send TRI', status: capabilities.send.ready ? 'live' : 'guarded' },
       { key: 'lockUnlock', label: 'Wallet lock/unlock', status: capabilities.unlock.ready ? 'live' : 'guarded' },
+      { key: 'messaging', label: 'Secure messaging', status: capabilities.messaging.ready ? 'live' : (capabilities.messaging.available ? 'guarded' : 'off') },
     ],
   })
 })
 
 app.get('/api/wallet/summary', async (_req, res) => {
-  const nodeState = await readNodeState()
+  const nodeState = isLightMode
+    ? { status: 'running', reason: 'Light mode — using remote node', mode: 'light' }
+    : await readNodeState()
   const node = getActiveNode()
 
   try {
@@ -865,6 +926,7 @@ app.get('/api/wallet/summary', async (_req, res) => {
         backupExport: capabilities.backup.available,
         addressGeneration: capabilities.addressGeneration.available,
         lockUnlock: capabilities.unlock.available,
+        messaging: capabilities.messaging.available,
       },
     })
   } catch (error) {
@@ -913,6 +975,7 @@ app.get('/api/wallet/summary', async (_req, res) => {
         backupExport: Boolean(walletExportPath),
         addressGeneration: enableWriteOps,
         lockUnlock: allowWalletUnlock,
+        messaging: allowSmsg,
       },
     })
   }
@@ -926,6 +989,159 @@ app.post('/api/rpc', async (req, res) => {
     }
     const result = await rpcCall(getActiveNode().url, getActiveNode().user, getActiveNode().password, method, params)
     res.json({ result })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// ─── Secure Messaging API (smessage) ─────────────────────────────────────────
+
+function parseSmsgResult(raw) {
+  // smessage RPCs return results as a flat object or string; normalize to usable shape
+  if (typeof raw === 'string') return { result: raw, messages: [] }
+  if (!raw) return { result: '', messages: [] }
+
+  // smsginbox / smsgoutbox return messages embedded under repeated "message" keys
+  // The RPC returns { message: {...}, message: {...}, result: "N messages shown." }
+  // But JSON doesn't support duplicate keys — the RPC actually returns an array-like
+  // structure that the JSON-RPC layer flattens. We handle both array and object forms.
+  if (Array.isArray(raw)) {
+    return { result: '', messages: raw }
+  }
+
+  // Single object with a "message" field (single message)
+  if (raw.message && typeof raw.message === 'object' && !Array.isArray(raw.message)) {
+    return { result: raw.result || '', messages: [raw.message] }
+  }
+
+  // Try to extract messages from the result string count
+  return { result: raw.result || String(raw), messages: raw.messages || [] }
+}
+
+app.get('/api/messages/inbox', async (_req, res) => {
+  if (!allowSmsg) return res.status(403).json({ error: 'Secure messaging is disabled' })
+  const node = getActiveNode()
+  try {
+    const raw = await rpcCall(node.url, node.user, node.password, 'smsginbox', ['all'])
+    const parsed = parseSmsgResult(raw)
+    res.json({ ok: true, ...parsed })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.get('/api/messages/outbox', async (_req, res) => {
+  if (!allowSmsg) return res.status(403).json({ error: 'Secure messaging is disabled' })
+  const node = getActiveNode()
+  try {
+    const raw = await rpcCall(node.url, node.user, node.password, 'smsgoutbox', ['all'])
+    const parsed = parseSmsgResult(raw)
+    res.json({ ok: true, ...parsed })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/messages/send', async (req, res) => {
+  if (!allowSmsg) return res.status(403).json({ error: 'Secure messaging is disabled' })
+  const { from, to, message } = req.body || {}
+  if (!from || !to || !message) return res.status(400).json({ error: 'from, to, and message are required' })
+  if (message.length > 4096) return res.status(400).json({ error: 'Message exceeds 4096 byte limit' })
+  const node = getActiveNode()
+  try {
+    const result = await rpcCall(node.url, node.user, node.password, 'smsgsend', [from, to, message])
+    const ok = typeof result === 'string' ? result.toLowerCase().includes('sent') : result?.result?.toLowerCase().includes('sent')
+    res.json({ ok, result: typeof result === 'string' ? result : (result?.result || JSON.stringify(result)) })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/messages/send-anon', async (req, res) => {
+  if (!allowSmsg) return res.status(403).json({ error: 'Secure messaging is disabled' })
+  const { to, message } = req.body || {}
+  if (!to || !message) return res.status(400).json({ error: 'to and message are required' })
+  if (message.length > 4096) return res.status(400).json({ error: 'Message exceeds 4096 byte limit' })
+  const node = getActiveNode()
+  try {
+    const result = await rpcCall(node.url, node.user, node.password, 'smsgsendanon', [to, message])
+    const ok = typeof result === 'string' ? result.toLowerCase().includes('sent') : result?.result?.toLowerCase().includes('sent')
+    res.json({ ok, result: typeof result === 'string' ? result : (result?.result || JSON.stringify(result)) })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.get('/api/messages/keys', async (_req, res) => {
+  if (!allowSmsg) return res.status(403).json({ error: 'Secure messaging is disabled' })
+  const node = getActiveNode()
+  try {
+    const raw = await rpcCall(node.url, node.user, node.password, 'smsglocalkeys', ['all'])
+    // Parse key listing — result is { key: "addr - pubkey Receive on/off, Anon on/off - label", result: "N keys listed." }
+    const keys = []
+    if (typeof raw === 'object' && raw !== null) {
+      const entries = Array.isArray(raw) ? raw : (raw.key ? [raw.key] : [])
+      for (const entry of [].concat(entries)) {
+        if (typeof entry !== 'string') continue
+        const match = entry.match(/^(\S+)\s+-\s+(\S+)\s+(.*)$/)
+        if (match) {
+          const [, address, pubkey, flags] = match
+          keys.push({
+            address,
+            pubkey,
+            receiveOn: /Receive on/i.test(flags),
+            anonOn: /Anon on/i.test(flags),
+            label: (flags.match(/-\s*(.+)$/) || [])[1]?.trim() || '',
+          })
+        }
+      }
+    }
+    res.json({ ok: true, keys, result: raw?.result || '' })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/messages/keys/receive', async (req, res) => {
+  if (!allowSmsg) return res.status(403).json({ error: 'Secure messaging is disabled' })
+  const { address, enable } = req.body || {}
+  if (!address) return res.status(400).json({ error: 'address is required' })
+  const flag = enable ? '+' : '-'
+  const node = getActiveNode()
+  try {
+    const result = await rpcCall(node.url, node.user, node.password, 'smsglocalkeys', ['recv', flag, address])
+    res.json({ ok: true, result: typeof result === 'string' ? result : (result?.result || JSON.stringify(result)) })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/messages/pubkey', async (req, res) => {
+  if (!allowSmsg) return res.status(403).json({ error: 'Secure messaging is disabled' })
+  const { address } = req.body || {}
+  if (!address) return res.status(400).json({ error: 'address is required' })
+  const node = getActiveNode()
+  try {
+    const result = await rpcCall(node.url, node.user, node.password, 'smsggetpubkey', [address])
+    const found = typeof result === 'object' && result?.result?.toLowerCase().includes('success')
+    res.json({
+      ok: true,
+      found,
+      pubkey: result?.['compressed public key'] || result?.['peer address in DB'] || null,
+      source: result?.['address in wallet'] ? 'wallet' : (result?.['peer address in DB'] ? 'database' : null),
+      result: result?.result || '',
+    })
+  } catch (error) {
+    res.status(500).json({ error: error.message })
+  }
+})
+
+app.post('/api/messages/scan-chain', async (_req, res) => {
+  if (!allowSmsg) return res.status(403).json({ error: 'Secure messaging is disabled' })
+  const node = getActiveNode()
+  try {
+    const result = await rpcCall(node.url, node.user, node.password, 'smsgscanchain', [])
+    res.json({ ok: true, result: typeof result === 'string' ? result : (result?.result || JSON.stringify(result)) })
   } catch (error) {
     res.status(500).json({ error: error.message })
   }
@@ -991,6 +1207,6 @@ app.use((_req, res) => {
 ensureDataDirs().then(() => loadNodes()).then(() => {
   app.listen(PORT, () => {
     const node = getActiveNode()
-    console.log(`TRIdock Web Wallet listening on :${PORT} (active node: ${node.name})`)
+    console.log(`TRIdock Web Wallet listening on :${PORT} (mode: ${triMode}, active node: ${node.name})`)
   })
 })

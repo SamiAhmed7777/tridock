@@ -24,7 +24,7 @@ TRI_ALLOW_BACKUP_EXPORT="${TRI_ALLOW_BACKUP_EXPORT:-1}"
 TRI_WALLET_EXPORT_PATH="${TRI_WALLET_EXPORT_PATH:-$DATA_DIR/wallet.dat}"
 TRI_ADMIN_ACTION="${TRI_ADMIN_ACTION:-}"
 TRI_BIN="${TRI_BIN:-$BIN_DIR/trianglesd}"
-TRI_VERSION="${TRI_VERSION:-5.7.6}"
+TRI_VERSION="${TRI_VERSION:-5.7.7}"
 TRI_RELEASE_BASE_URL="${TRI_RELEASE_BASE_URL:-https://github.com/SamiAhmed7777/triangles_v5/releases/download}"
 TRI_RELEASE_FILENAME="${TRI_RELEASE_FILENAME:-}"
 TRI_RELEASE_URL="${TRI_RELEASE_URL:-}"
@@ -64,6 +64,8 @@ resolve_tor_port() {
 BOOTSTRAP_ENABLED="${TRI_BOOTSTRAP_ENABLED:-1}"
 PREFER_BOOTSTRAP="${TRI_PREFER_BOOTSTRAP:-1}"
 STAKE_ENABLED="${TRI_STAKE_ENABLED:-0}"
+SMSG_ENABLED="${TRI_SMSG_ENABLED:-1}"
+SMSG_SCAN_CHAIN="${TRI_SMSG_SCAN_CHAIN:-0}"
 RPC_USER="${TRI_RPCUSER:-tri}"
 RPC_PASSWORD="${TRI_RPCPASSWORD:-tri}"
 RPC_PORT="${TRI_RPCPORT:-19112}"
@@ -160,6 +162,7 @@ publish_static_metadata() {
     --arg instanceId "$TRI_INSTANCE_ID" \
     --arg walletId "$TRI_WALLET_ID" \
     --arg role "$TRI_ROLE" \
+    --arg mode "$MODE" \
     --argjson writeOps $( [ "$TRI_ENABLE_WRITE_OPS" = "1" ] && echo true || echo false ) \
     --argjson sendEnabled $( [ "$TRI_ALLOW_SEND_BROADCAST" = "1" ] && echo true || echo false ) \
     --argjson unlockEnabled $( [ "$TRI_ALLOW_WALLET_UNLOCK" = "1" ] && echo true || echo false ) \
@@ -170,7 +173,8 @@ publish_static_metadata() {
     --argjson seedIsolation $( [ "$TRI_SEED_ISOLATION" = "1" ] && echo true || echo false ) \
     --argjson seedDisableDiscovery $( [ "$TRI_SEED_DISABLE_DISCOVERY" = "1" ] && echo true || echo false ) \
     --arg onionAddress "$onion_addr" \
-    '{instanceId:$instanceId,walletId:$walletId,role:$role,writeOps:$writeOps,sendEnabled:$sendEnabled,unlockEnabled:$unlockEnabled,reseedAllowed:$reseedAllowed,backupEnabled:$backupEnabled,canonicalCheck:$canonicalCheck,seedMode:$seedMode,seedIsolation:$seedIsolation,seedDisableDiscovery:$seedDisableDiscovery,onionAddress:$onionAddress}')"
+    --argjson smsgEnabled $( [ "$SMSG_ENABLED" = "1" ] && echo true || echo false ) \
+    '{instanceId:$instanceId,walletId:$walletId,role:$role,mode:$mode,writeOps:$writeOps,sendEnabled:$sendEnabled,unlockEnabled:$unlockEnabled,reseedAllowed:$reseedAllowed,backupEnabled:$backupEnabled,canonicalCheck:$canonicalCheck,seedMode:$seedMode,seedIsolation:$seedIsolation,seedDisableDiscovery:$seedDisableDiscovery,onionAddress:$onionAddress,smsgEnabled:$smsgEnabled}')"
 
   write_json_file "$PATHS_FILE" "$(jq -cn \
     --arg data "$DATA_DIR" \
@@ -532,6 +536,14 @@ proxy=127.0.0.1:${SOCKS_PORT}
 listenonion=1
 tor=127.0.0.1:${SOCKS_PORT}
 onion=127.0.0.1:${SOCKS_PORT}
+onlynet=onion
+dnsseed=0
+addnode=gxvrhv3qitnc6kobrhsrse46bmcfitnybapor3or3oczzuxn6hfzxyid.onion
+addnode=jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion
+addnode=dyamrxgdsq7vids5vpetlfvpga6u54ihgpava5saz5rz2l6fp4sltqyd.onion
+addnode=eceyvvunnjx52axziol54mmiqv7nhzpxguzwkpygdh2ip6fpzc3yrjid.onion
+addnode=vkwykhwsfxsy33ipnmcj4cnll3i5uhbphpec2dutm5tm6j6kczcubiyd.onion
+addnode=uj3xgtr2knr3he2va6v2kj3ingdbghce44kw5pfopjhrto46n3h2yvqd.onion
 CFG
   fi
 
@@ -730,7 +742,12 @@ bootstrap_chain() {
     set_bootstrap_source "$source"
     write_bootstrap_progress "starting"
     rm -f "$BOOTSTRAP_FILE"
-    if wget --progress=dot:giga --show-progress --tries=1 --timeout="$BOOTSTRAP_TIMEOUT" -O "$BOOTSTRAP_FILE" "$source" 2>&1 | while IFS= read -r line; do
+    local wget_proxy_args=""
+    if [ "$TOR_ENABLED" = "1" ]; then
+      wget_proxy_args="-e use_proxy=yes -e http_proxy=socks5h://127.0.0.1:${SOCKS_PORT} -e https_proxy=socks5h://127.0.0.1:${SOCKS_PORT}"
+    fi
+    # shellcheck disable=SC2086
+    if wget $wget_proxy_args --progress=dot:giga --show-progress --tries=1 --timeout="$BOOTSTRAP_TIMEOUT" -O "$BOOTSTRAP_FILE" "$source" 2>&1 | while IFS= read -r line; do
       echo "$line"
       case "$line" in
         *%*)
@@ -798,6 +815,16 @@ build_args() {
     if [ -n "$first" ]; then
       log "Preferred bootstrap source: $first"
     fi
+  fi
+
+  if [ "$TOR_ENABLED" != "1" ]; then
+    TRI_ARGS+=("-listenonion=0")
+  fi
+
+  if [ "$SMSG_ENABLED" = "0" ]; then
+    TRI_ARGS+=("-nosmsg")
+  elif [ "$SMSG_SCAN_CHAIN" = "1" ]; then
+    TRI_ARGS+=("-smsgscanchain")
   fi
 
   if [ -n "$EXTRA_ARGS" ]; then
@@ -894,6 +921,23 @@ main() {
   if [ -n "$TRI_ADMIN_ACTION" ]; then
     run_admin_action "$TRI_ADMIN_ACTION"
     exit $?
+  fi
+
+  # ─── Light mode: skip daemon and bootstrap — just run the wallet UI ─────────
+  if [ "$MODE" = "light" ]; then
+    log "Starting in light mode — no local daemon, connecting to remote node"
+    # Start Tor if enabled (needed for .onion remote node connectivity)
+    start_tor
+    set_status "running" "Light mode — using remote node"
+    mark_ready
+    start_wallet_ui
+    if [ -n "${UI_PID:-}" ]; then
+      wait "$UI_PID"
+    fi
+    log "Wallet UI exited — container staying alive for appliance access"
+    tail -f /dev/null &
+    wait $!
+    return 0
   fi
 
   require_binary

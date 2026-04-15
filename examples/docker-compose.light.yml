@@ -1,0 +1,35 @@
+# Light wallet — no local daemon, no blockchain download.
+# Connects to a remote TRIdock full node via RPC.
+# Supports .onion addresses when TRI_TOR_ENABLED is set.
+services:
+  tridock-light:
+    image: samiahmed7777/tridock:latest
+    container_name: tridock-light
+    restart: unless-stopped
+    ports:
+      - "4177:4177/tcp"
+    environment:
+      TRI_MODE: light
+      TRI_NODE_NAME: tridock-light
+      TRI_INSTANCE_ID: tridock-light
+      TRI_WALLET_ID: primary
+      TRI_ROLE: wallet
+      # Remote node connection — REQUIRED for light mode
+      TRI_RPC_URL: "http://your-full-node:19112"
+      TRI_RPCUSER: tri
+      TRI_RPCPASSWORD: change-me
+      PORT: "4177"
+      # Optional: enable Tor for .onion remote nodes
+      TRI_TOR_ENABLED: "0"
+      # Wallet capabilities (controlled by remote node)
+      TRI_ENABLE_WRITE_OPS: "1"
+      TRI_ALLOW_SEND_BROADCAST: "1"
+      TRI_ALLOW_WALLET_UNLOCK: "1"
+      TRI_ALLOW_BACKUP_EXPORT: "0"
+    volumes:
+      - tri_light_state:/tri/state
+      - tri_light_ui_data:/tri/ui-data
+
+volumes:
+  tri_light_state:
+  tri_light_ui_data:
