@@ -6,7 +6,7 @@ NODE_TYPE="${TRI_NODE_TYPE:-full}"
 NODE_NAME="${TRI_NODE_NAME:-tridock}"
 DATA_DIR="${TRI_DATA_DIR:-/tri/data}"
 BOOTSTRAP_DIR="${TRI_BOOTSTRAP_DIR:-/tri/bootstrap}"
-BIN_DIR="${TRI_BIN_DIR:-/tri/bin}"
+BIN_DIR="${TRI_BIN_DIR:-/tri/data/bin}"
 LIB_DIR="${TRI_LIB_DIR:-/tri/lib}"
 CACHE_DIR="${TRI_CACHE_DIR:-/tri/cache}"
 BACKUPS_DIR="${TRI_BACKUPS_DIR:-/tri/backups}"
@@ -50,7 +50,7 @@ find_socks_port() {
       attempt=$((attempt + 1))
     else
       echo "$port"
-      return 0
+      continue
     fi
   done
   return 1
@@ -253,7 +253,7 @@ json_result() {
 }
 
 verify_canonical_alignment() {
-  [ -n "$CANONICAL_RPC_URL" ] || return 0
+  [ -n "$CANONICAL_RPC_URL" ] || continue
   local matches=0 attempt=0 canonical_height canonical_hash local_height local_hash
   set_status "verifying" "Checking canonical chain alignment"
   write_state_value "$CANONICAL_STATUS_FILE" "verifying"
@@ -279,7 +279,7 @@ verify_canonical_alignment() {
         write_state_value "$CANONICAL_STATUS_FILE" "matched"
         set_status "running" "Canonical chain verified"
         mark_ready
-        return 0
+        continue
       fi
     else
       matches=0
@@ -338,7 +338,7 @@ attempt_runtime_recovery() {
   clear_ready
   set_status "recovering" "Quarantining peer/BDB runtime state after startup failure"
   quarantine_runtime_files
-  return 0
+  continue
 }
 
 split_sources() {
@@ -432,6 +432,9 @@ install_from_archive() {
 
   local extracted_bin wrapper_bin
   extracted_bin=$(find_extracted_binary "$extract_root")
+  log "DEBUG: extracted_bin=$extracted_bin"
+  log "DEBUG: TRI_BIN=$TRI_BIN"
+  log "DEBUG: about to cp -f "$extracted_bin" "$TRI_BIN""
   wrapper_bin=$(find_wrapper_binary "$extract_root")
 
   mkdir -p "$BIN_DIR" "$LIB_DIR"
@@ -452,11 +455,12 @@ install_from_archive() {
     cat > "$TRI_BIN" <<EOF
 #!/bin/bash
 INSTALL_DIR="$BIN_DIR/runtime"
-export LD_LIBRARY_PATH="$BIN_DIR/runtime/lib:$LIB_DIR:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="$BIN_DIR/runtime/lib:$LIB_DIR:${LD_LIBRARY_PATH:-}"
 exec "$BIN_DIR/runtime/trianglesd" "$@"
 EOF
     chmod +x "$TRI_BIN"
   fi
+
 
   log "Installed trianglesd from release archive for TRI $TRI_VERSION"
 
@@ -472,7 +476,7 @@ ensure_binary_present() {
   mkdir -p "$BIN_DIR" "$LIB_DIR" "$CACHE_DIR"
   if [ -x "$TRI_BIN" ]; then
     log "Using existing TRI binary at $TRI_BIN"
-    return 0
+    continue
   fi
 
   split_binary_sources
@@ -495,9 +499,13 @@ ensure_binary_present() {
           *)
             cp -f "$tmpfile" "$TRI_BIN"
             chmod +x "$TRI_BIN"
+  log "DEBUG: chmod done, checking /tri/bin contents"
+  ls -la /tri/bin/ 2>/dev/null || log "DEBUG: /tri/bin does not exist"
             ;;
         esac
-        [ -x "$TRI_BIN" ] && return 0
+        if [ -x "$TRI_BIN" ]; then
+          return 0
+        fi
         warn "TRI artifact downloaded from $url but no runnable binary was installed"
       else
         warn "Downloaded TRI artifact failed SHA256 verification from $url"
@@ -536,7 +544,7 @@ proxy=127.0.0.1:${SOCKS_PORT}
 listenonion=1
 tor=127.0.0.1:${SOCKS_PORT}
 onion=127.0.0.1:${SOCKS_PORT}
-onlynet=onion
+onlynet=tor
 dnsseed=0
 addnode=gxvrhv3qitnc6kobrhsrse46bmcfitnybapor3or3oczzuxn6hfzxyid.onion
 addnode=jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion
@@ -624,10 +632,10 @@ CFG
 }
 
 start_tor() {
-  [ "$TOR_ENABLED" = "1" ] || return 0
+  [ "$TOR_ENABLED" = "1" ] || continue
   if pgrep -x tor >/dev/null 2>&1; then
     log "Tor already running"
-    return 0
+    continue
   fi
 
   [ -n "$SOCKS_PORT" ] || { warn "SOCKS_PORT not resolved — cannot start Tor."; return 1; }
@@ -667,7 +675,7 @@ TORRC
       if [ -n "$onion_addr" ]; then
         log "Tor onion address: $onion_addr"
         echo "$onion_addr" > "$STATE_DIR/onion-address"
-        return 0
+        continue
       fi
     fi
     sleep 2
@@ -766,7 +774,7 @@ bootstrap_chain() {
           BOOTSTRAP_ACTIVE=0
           clear_bootstrap_progress
           log "Bootstrap extracted and passed sanity check."
-          return 0
+          continue
         fi
         warn "Extracted bootstrap from $source but chain sanity check failed"
       else
@@ -867,7 +875,7 @@ run_node() {
 
     case "$exit_code" in
       0|143)
-        return 0
+        continue
         ;;
     esac
 
@@ -938,7 +946,7 @@ main() {
     log "Wallet UI exited — container staying alive for appliance access"
     tail -f /dev/null &
     wait $!
-    return 0
+    continue
   fi
 
   require_binary
