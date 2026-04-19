@@ -38,6 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd \
     openssl \
     procps \
+    iproute2 \
     tar \
     libarchive-tools \
     tor \
@@ -72,7 +73,7 @@ COPY healthcheck.sh /healthcheck.sh
 COPY tridock.sh /usr/local/bin/tridock
 RUN chmod +x /entrypoint.sh /healthcheck.sh /usr/local/bin/tridock
 
-VOLUME ["/tri/data", "/tri/bootstrap", "/tri/bin", "/tri/lib", "/tri/cache", "/tri/state", "/tri/backups", "/tri/config", "/tri/ui-data", "/tri/logs"]
+VOLUME ["/tri/data", "/tri/bootstrap", "/tri/cache", "/tri/state", "/tri/backups", "/tri/config", "/tri/ui-data", "/tri/logs"]
 
 EXPOSE 24112/tcp 24112/udp 4177/tcp
 
