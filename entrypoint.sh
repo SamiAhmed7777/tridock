@@ -83,6 +83,7 @@ CANONICAL_RPC_PASSWORD="${TRI_CANONICAL_RPC_PASSWORD:-}"
 CANONICAL_VERIFY_ATTEMPTS="${TRI_CANONICAL_VERIFY_ATTEMPTS:-20}"
 CANONICAL_VERIFY_INTERVAL="${TRI_CANONICAL_VERIFY_INTERVAL:-30}"
 CANONICAL_REQUIRED_MATCHES="${TRI_CANONICAL_REQUIRED_MATCHES:-2}"
+AUTO_RESEED_ON_FORK="${TRI_AUTO_RESEED_ON_FORK:-0}"
 CONF_FILE="$DATA_DIR/triangles.conf"
 BOOTSTRAP_FILE="$BOOTSTRAP_DIR/bootstrap.tar.gz"
 TOR_LOG="/tmp/tor.log"
@@ -241,9 +242,16 @@ rpc_call() {
   local method="$1"
   local params="${2:-[]}"
   local auth_args=()
+  local curl_args=(-fsS)
   [ -n "$CANONICAL_RPC_USER" ] && auth_args+=(--user "$CANONICAL_RPC_USER")
   [ -n "$CANONICAL_RPC_PASSWORD" ] && auth_args+=(--password "$CANONICAL_RPC_PASSWORD")
-  curl -fsS "${auth_args[@]}" -H 'content-type: application/json' \
+  # Route .onion addresses through Tor SOCKS proxy
+  case "$CANONICAL_RPC_URL" in
+    *://*.onion:*)
+      curl_args+=(--socks5 "127.0.0.1:${TOR_SOCKS_PORT:-9050}")
+      ;;
+  esac
+  curl "${curl_args[@]}" "${auth_args[@]}" -H 'content-type: application/json' \
     --data "{\"jsonrpc\":\"1.0\",\"id\":\"tridock\",\"method\":\"$method\",\"params\":$params}" \
     "$CANONICAL_RPC_URL"
 }
@@ -292,8 +300,8 @@ verify_canonical_alignment() {
   done
 
   write_state_value "$CANONICAL_STATUS_FILE" "timeout"
-  set_status "syncing" "Canonical verification timed out"
-  return 1
+  set_status "syncing" "Canonical verification timed out — will trigger reseed"
+  return 2
 }
 
 cleanup() {
@@ -866,7 +874,25 @@ run_node() {
     fi
 
     if [ -n "$CANONICAL_RPC_URL" ]; then
-      verify_canonical_alignment || true
+      if ! verify_canonical_alignment; then
+        local canonical_result=$?
+        if [ "$canonical_result" = "2" ] && [ "$AUTO_RESEED_ON_FORK" = "1" ] && [ "$TRI_ALLOW_RESEED" = "1" ]; then
+          warn "Canonical chain mismatch detected — triggering automatic reseed..."
+          set_status "resyncing" "Canonical mismatch, clearing chain and re-bootstrapping"
+          # Wipe chain state (keep wallet + config)
+          rm -rf "$DATA_DIR/txleveldb" "$DATA_DIR/database" "$DATA_DIR/chainstate" \
+                 "$DATA_DIR/blk0001.dat" "$DATA_DIR/peers.dat" \
+                 "$DATA_DIR/*.log" 2>/dev/null || true
+          # Clear bootstrap so it re-downloads on next start
+          rm -f "$BOOTSTRAP_DIR"/*.tar.gz "$BOOTSTRAP_DIR"/.bootstrap_complete 2>/dev/null || true
+          write_state_value "$CANONICAL_STATUS_FILE" "resyncing"
+          log "Reseed triggered. Container will restart and re-bootstrap."
+          # Exit with special code to trigger container restart
+          exit 77
+        else
+          warn "Canonical verification failed (code $canonical_result) but auto-reseed is disabled."
+        fi
+      fi
     fi
 
     exit_code=0
