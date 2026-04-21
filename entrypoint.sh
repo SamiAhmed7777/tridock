@@ -792,8 +792,11 @@ rpc_call() {
   local method="$1" params="${2:-[]}"
   local auth_args=() curl_args=(-fsS)
 
-  [ -n "$CANONICAL_RPC_USER" ] && auth_args+=(--user "$CANONICAL_RPC_USER")
-  [ -n "$CANONICAL_RPC_PASSWORD" ] && auth_args+=(--password "$CANONICAL_RPC_PASSWORD")
+  if [ -n "$CANONICAL_RPC_USER" ] && [ -n "$CANONICAL_RPC_PASSWORD" ]; then
+    auth_args+=(--user "$CANONICAL_RPC_USER:$CANONICAL_RPC_PASSWORD")
+  elif [ -n "$CANONICAL_RPC_USER" ]; then
+    auth_args+=(--user "$CANONICAL_RPC_USER")
+  fi
 
   # Route .onion through Tor SOCKS proxy
   case "$CANONICAL_RPC_URL" in
