@@ -65,8 +65,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     npm \
  && rm -rf /var/lib/apt/lists/* \
  && cd /tri/ui-data && npm install --omit=dev \
- && apt-get remove -y nodejs npm \
- && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/*
 
 COPY entrypoint.sh /entrypoint.sh
 COPY healthcheck.sh /healthcheck.sh
