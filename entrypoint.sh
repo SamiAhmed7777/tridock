@@ -1018,7 +1018,7 @@ start_wallet_ui() {
   [ -f "$UI_DATA_DIR/server.mjs" ] || { log "No wallet UI found — skipping"; return; }
   log "Starting wallet web UI on port ${PORT:-4177}..."
   cd "$UI_DATA_DIR"
-  node server.mjs &
+  nodejs server.mjs &
   UI_PID=$!
   log "Wallet web UI started (PID $UI_PID)"
 }
@@ -1076,7 +1076,7 @@ main() {
   run_node &
   local node_pid=$!
   start_wallet_ui
-  wait $node_pid
+  wait $node_pid || true || true
   log "trianglesd exited — container staying alive for appliance access"
   tail -f /dev/null &
   wait $!
