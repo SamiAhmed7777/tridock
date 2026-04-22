@@ -3,7 +3,18 @@
 # Lessons learned: https://github.com/SamiAhmed7777/tridock/blob/master/LESSONS_LEARNED.md
 set -Eeuo pipefail
 
+# ERR trap disabled during init (re-enabled after main setup)
+set +E
+
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Idempotent startup cleanup — remove stale state from previous runs
+# ═══════════════════════════════════════════════════════════════════════════════
+rm -f "$DATA_DIR"/.lock "$DATA_DIR/trianglesd.pid" 2>/dev/null || true
+rm -f "$DATA_DIR/database/LOCK" "$DATA_DIR/txleveldb/LOCK" 2>/dev/null || true
+rm -f "$DATA_DIR/peers.dat" 2>/dev/null || true
+rm -f "$CACHE_DIR"/*.pid "$CACHE_DIR"/*.lock 2>/dev/null || true
 # Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -239,6 +250,8 @@ cleanup() {
     wait "$TRI_PID" 2>/dev/null || true
   fi
 }
+# Re-enable ERR trap for operational phase
+set -E
 trap cleanup EXIT INT TERM
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -338,7 +351,7 @@ resolve_tri_release_inputs() {
   [ -z "$TRI_RELEASE_FILENAME" ] && TRI_RELEASE_FILENAME="$(basename "$TRI_RELEASE_URL")"
   [ -z "$TRI_BIN_DOWNLOAD_URL" ] && TRI_BIN_DOWNLOAD_URL="$TRI_RELEASE_URL"
 }
-resolve_tri_release_inputs
+resolve_tri_release_inputs || true
 
 verify_sha256() {
   local file="$1" expected="$2"
