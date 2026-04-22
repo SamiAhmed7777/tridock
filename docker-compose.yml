@@ -1,131 +1,193 @@
+networks:
+  tri-seed-net:
+    driver: bridge
 services:
-  tridock:
-    build: .
-    image: samiahmed7777/tridock:latest
-    container_name: tridock-dev
-    restart: unless-stopped
-    working_dir: /tri
-    ports:
-      - "24116:24112/tcp"
-      - "24116:24112/udp"
-      - "19116:19112/tcp"
-      - "4177:4177/tcp"
+  tri-seed-1:
+    container_name: tri-seed-1
     environment:
-      # ── Node Type ───────────────────────────────────────────────
-      # Choose: full  → loads full blockchain, can stake (default)
-      #          spv   → lightweight pruned wallet, no full chain needed
-      # SPV is perfect for users who don't want to download 12 years of chain
-      # ───────────────────────────────────────────────────────────
-      TRI_NODE_TYPE: "full"
-
-      # ── Node Mode ───────────────────────────────────────────────
-      # Choose: full  → normal wallet with optional staking
-      #          seed  → relay-only node, no wallet (lightweight)
-      #          staking → dedicated staking wallet
-      # ───────────────────────────────────────────────────────────
-      TRI_MODE: "full"
-
-      # ── Seed Isolation (only matters when TRI_MODE=seed) ────────
-      # Set to "1" to clear stale peers.dat before starting,
-      # preventing seed from poisoning itself on restart
-      TRI_SEED_ISOLATION: "0"
-
-      # Remove discovery/listen for seed isolation mode
-      TRI_SEED_DISABLE_DISCOVERY: "0"
-
-      # Comma-separated onion addresses to trust exclusively as seed peers
-      # Example: "onion1:24112,onion2:24112"
-      TRI_SEED_TRUSTED_PEERS: ""
-
-      # Seconds to wait before starting daemon
-      # Prevents multiple seed containers from contaminating each other
-      SEED_STARTUP_DELAY: "0"
-
-      # ── Core Settings ────────────────────────────────────────────
-      TRI_VERSION: "5.7.9"
-      TRI_TOR_ENABLED: "1"
-      TRI_BOOTSTRAP_ENABLED: "1"
-      TRI_PREFER_BOOTSTRAP: "1"
-      TRI_BOOTSTRAP_TIMEOUT: "30"
-      TRI_BOOTSTRAP_MIN_BLOCK_BYTES: "100000000"
-      TRI_BOOTSTRAP_MIN_LDB_COUNT: "300"
-
-      # Bootstrap sources (comma-separated, first available is used)
-      TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/triangles-bootstrap.tar.gz,https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
-
-      TRI_RPCUSER: "tri"
-      TRI_RPCPASSWORD: "change-me"
-      TRI_RPCPORT: "19112"
-      TRI_PORT: "24112"
-      TRI_MAX_CONNECTIONS: "64"
-      TRI_DBCACHE: "512"
-
-      # ── Wallet Feature Flags ───────────────────────────────────
-      # Write operations (address generation): off by default for safety
-      TRI_ENABLE_WRITE_OPS: "0"
-      # Send/broadcast transactions: off until explicitly enabled
-      TRI_ALLOW_SEND_BROADCAST: "0"
-      # Unlock wallet for signing: off until explicitly enabled
-      TRI_ALLOW_WALLET_UNLOCK: "0"
-      # Allow chain reseed/wipe: off by default
-      TRI_ALLOW_RESEED: "0"
-      # Allow wallet backup export: off by default
-      TRI_ALLOW_BACKUP_EXPORT: "0"
-
-      # Web UI port
-      PORT: "4177"
-
+      TOR_SOCKS_PORT: '9050'
+      TRI_ALLOW_BACKUP_EXPORT: '0'
+      TRI_ALLOW_RESEED: '0'
+      TRI_ALLOW_SEND_BROADCAST: '0'
+      TRI_ALLOW_WALLET_UNLOCK: '0'
+      TRI_BIN: /tri/bin/trianglesd
+      TRI_BIN_DIR: /tri/bin
+      TRI_BIN_SHA256: sKIP
+      TRI_CACHE_DIR: /tri/data/cache
+      TRI_CANONICAL_RPC_PASSWORD: xK7mNp4QvR8sWjY2bTdL9eAf
+      TRI_CANONICAL_RPC_URL: http://jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion:19112
+      TRI_CANONICAL_RPC_USER: trianglesrpc
+      TRI_ENABLE_WRITE_OPS: '0'
+      TRI_INSTANCE_ID: tri-seed-1
+      TRI_LIB_DIR: /tri/data/lib
+      TRI_MODE: seed
+      TRI_NODE_NAME: tri-seed-1
+      TRI_ROLE: seed
+      TRI_RPCPASSWORD: triSEED2026
+      TRI_RPCUSER: triseed
+      TRI_SEED_ISOLATION: '1'
+      TRI_SEED_MODE: '1'
+      TRI_SEED_TRUSTED_PEERS: 6ygpphp2qsucwvhwefv6h6ehvk6zjf7b7zdp4ggkzjjwe76cg6jwm7id.onion:24112,jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion:24112
+      TRI_STAKE_ENABLED: '0'
+      TRI_VERSION: 5.8.5
+    image: samiahmed7777/tridock:walletfix2
+    logging:
+      driver: json-file
+      options:
+        max-file: '3'
+        max-size: 10m
+    networks:
+    - tri-seed-net
+    ports:
+    - 24112:24112
+    restart: unless-stopped
     volumes:
-      - tri_data:/tri/data
-      - tri_bootstrap:/tri/bootstrap
-      - tri_cache:/tri/cache
-      - tri_state:/tri/state
-      - tri_backups:/tri/backups
-      - tri_config:/tri/config
-      - tri_ui_data:/tri/ui-data
-      - tri_logs:/tri/logs
-
-  # ── Example SPV Node ──────────────────────────────────────────────
-  # A lightweight wallet that doesn't download the full chain.
-  # Perfect for casual users or testing. Runs in ~1 minute.
-  # Copy this outside the services block and rename it to use it.
-  # NOTE: uncommenting requires adding to services below
-  #
-  # tridock-spv:
-  #   image: samiahmed7777/tridock:latest
-  #   container_name: tridock-spv
-  #   restart: unless-stopped
-  #   working_dir: /tri
-  #   ports:
-  #     - "24117:24112/tcp"
-  #     - "24117:24112/udp"
-  #     - "19117:19112/tcp"
-  #     - "4178:4177/tcp"
-  #   environment:
-  #     TRI_NODE_TYPE: "spv"
-  #     TRI_MODE: "full"
-  #     TRI_TOR_ENABLED: "1"
-  #     TRI_BOOTSTRAP_ENABLED: "1"
-  #     TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/triangles-bootstrap.tar.gz"
-  #     TRI_RPCUSER: "tri"
-  #     TRI_RPCPASSWORD: "change-me-spv"
-  #     TRI_RPCPORT: "19112"
-  #     TRI_PORT: "24112"
-  #     TRI_ENABLE_WRITE_OPS: "1"
-  #     TRI_ALLOW_SEND_BROADCAST: "1"
-  #     TRI_ALLOW_WALLET_UNLOCK: "1"
-  #   volumes:
-  #     - tri_spv_data:/tri/data
-  #     - tri_spv_state:/tri/state
-  #     - tri_spv_backups:/tri/backups
-  #     - tri_spv_logs:/tri/logs
-
+    - /root/tri-seed-nodes/data/seed-1:/tri/data
+    - /root/tri-seed-nodes/bin/seed-1:/tri/bin
+    - tri-seed-1-state:/tri/state
+    - tri-seed-1-logs:/tri/logs
+    command: []
+  tri-seed-2:
+    container_name: tri-seed-2
+    environment:
+      TOR_SOCKS_PORT: '9050'
+      TRI_ALLOW_BACKUP_EXPORT: '0'
+      TRI_ALLOW_RESEED: '0'
+      TRI_ALLOW_SEND_BROADCAST: '0'
+      TRI_ALLOW_WALLET_UNLOCK: '0'
+      TRI_BIN: /tri/bin/trianglesd
+      TRI_BIN_DIR: /tri/bin
+      TRI_BIN_SHA256: sKIP
+      TRI_CACHE_DIR: /tri/data/cache
+      TRI_CANONICAL_RPC_PASSWORD: xK7mNp4QvR8sWjY2bTdL9eAf
+      TRI_CANONICAL_RPC_URL: http://jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion:19112
+      TRI_CANONICAL_RPC_USER: trianglesrpc
+      TRI_ENABLE_WRITE_OPS: '0'
+      TRI_INSTANCE_ID: tri-seed-2
+      TRI_LIB_DIR: /tri/data/lib
+      TRI_MODE: seed
+      TRI_NODE_NAME: tri-seed-2
+      TRI_ROLE: seed
+      TRI_RPCPASSWORD: triSEED2026
+      TRI_RPCUSER: triseed
+      TRI_SEED_ISOLATION: '1'
+      TRI_SEED_MODE: '1'
+      TRI_SEED_TRUSTED_PEERS: 6ygpphp2qsucwvhwefv6h6ehvk6zjf7b7zdp4ggkzjjwe76cg6jwm7id.onion:24112,jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion:24112
+      TRI_STAKE_ENABLED: '0'
+      TRI_VERSION: 5.8.5
+    image: samiahmed7777/tridock:walletfix2
+    logging:
+      driver: json-file
+      options:
+        max-file: '3'
+        max-size: 10m
+    networks:
+    - tri-seed-net
+    ports:
+    - 24113:24112
+    restart: unless-stopped
+    volumes:
+    - /root/tri-seed-nodes/data/seed-2:/tri/data
+    - /root/tri-seed-nodes/bin/seed-2:/tri/bin
+    - tri-seed-2-state:/tri/state
+    - tri-seed-2-logs:/tri/logs
+    command: []
+  tri-seed-3:
+    container_name: tri-seed-3
+    environment:
+      TOR_SOCKS_PORT: '9050'
+      TRI_ALLOW_BACKUP_EXPORT: '0'
+      TRI_ALLOW_RESEED: '0'
+      TRI_ALLOW_SEND_BROADCAST: '0'
+      TRI_ALLOW_WALLET_UNLOCK: '0'
+      TRI_BIN: /tri/bin/trianglesd
+      TRI_BIN_DIR: /tri/bin
+      TRI_BIN_SHA256: sKIP
+      TRI_CACHE_DIR: /tri/data/cache
+      TRI_CANONICAL_RPC_PASSWORD: xK7mNp4QvR8sWjY2bTdL9eAf
+      TRI_CANONICAL_RPC_URL: http://jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion:19112
+      TRI_CANONICAL_RPC_USER: trianglesrpc
+      TRI_ENABLE_WRITE_OPS: '0'
+      TRI_INSTANCE_ID: tri-seed-3
+      TRI_LIB_DIR: /tri/data/lib
+      TRI_MODE: seed
+      TRI_NODE_NAME: tri-seed-3
+      TRI_ROLE: seed
+      TRI_RPCPASSWORD: triSEED2026
+      TRI_RPCUSER: triseed
+      TRI_SEED_ISOLATION: '1'
+      TRI_SEED_MODE: '1'
+      TRI_SEED_TRUSTED_PEERS: 6ygpphp2qsucwvhwefv6h6ehvk6zjf7b7zdp4ggkzjjwe76cg6jwm7id.onion:24112,jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion:24112
+      TRI_STAKE_ENABLED: '0'
+      TRI_VERSION: 5.8.5
+    image: samiahmed7777/tridock:walletfix2
+    logging:
+      driver: json-file
+      options:
+        max-file: '3'
+        max-size: 10m
+    networks:
+    - tri-seed-net
+    ports:
+    - 24114:24112
+    restart: unless-stopped
+    volumes:
+    - /root/tri-seed-nodes/data/seed-3:/tri/data
+    - /root/tri-seed-nodes/bin/seed-3:/tri/bin
+    - tri-seed-3-state:/tri/state
+    - tri-seed-3-logs:/tri/logs
+    command: []
+  tri-seed-4:
+    container_name: tri-seed-4
+    environment:
+      TOR_SOCKS_PORT: '9050'
+      TRI_ALLOW_BACKUP_EXPORT: '0'
+      TRI_ALLOW_RESEED: '0'
+      TRI_ALLOW_SEND_BROADCAST: '0'
+      TRI_ALLOW_WALLET_UNLOCK: '0'
+      TRI_BIN: /tri/bin/trianglesd
+      TRI_BIN_DIR: /tri/bin
+      TRI_BIN_SHA256: sKIP
+      TRI_CACHE_DIR: /tri/data/cache
+      TRI_CANONICAL_RPC_PASSWORD: xK7mNp4QvR8sWjY2bTdL9eAf
+      TRI_CANONICAL_RPC_URL: http://jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion:19112
+      TRI_CANONICAL_RPC_USER: trianglesrpc
+      TRI_ENABLE_WRITE_OPS: '0'
+      TRI_INSTANCE_ID: tri-seed-4
+      TRI_LIB_DIR: /tri/data/lib
+      TRI_MODE: seed
+      TRI_NODE_NAME: tri-seed-4
+      TRI_ROLE: seed
+      TRI_RPCPASSWORD: triSEED2026
+      TRI_RPCUSER: triseed
+      TRI_SEED_ISOLATION: '1'
+      TRI_SEED_MODE: '1'
+      TRI_SEED_TRUSTED_PEERS: 6ygpphp2qsucwvhwefv6h6ehvk6zjf7b7zdp4ggkzjjwe76cg6jwm7id.onion:24112,jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion:24112
+      TRI_STAKE_ENABLED: '0'
+      TRI_VERSION: 5.8.5
+    image: samiahmed7777/tridock:walletfix2
+    logging:
+      driver: json-file
+      options:
+        max-file: '3'
+        max-size: 10m
+    networks:
+    - tri-seed-net
+    ports:
+    - 24115:24112
+    restart: unless-stopped
+    volumes:
+    - /root/tri-seed-nodes/data/seed-4:/tri/data
+    - /root/tri-seed-nodes/bin/seed-4:/tri/bin
+    - tri-seed-4-state:/tri/state
+    - tri-seed-4-logs:/tri/logs
+    command: []
 volumes:
-  tri_data:
-  tri_bootstrap:
-  tri_cache:
-  tri_state:
-  tri_backups:
-  tri_config:
-  tri_ui_data:
-  tri_logs:
+  tri-seed-1-logs: null
+  tri-seed-1-state: null
+  tri-seed-2-logs: null
+  tri-seed-2-state: null
+  tri-seed-3-logs: null
+  tri-seed-3-state: null
+  tri-seed-4-logs: null
+  tri-seed-4-state: null
