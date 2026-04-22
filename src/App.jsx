@@ -30,6 +30,15 @@ class ErrorBoundary extends Component {
   }
 }
 
+function Spinner() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+      <div style={{ width: 32, height: 32, border: '3px solid #343942', borderTopColor: '#c1172f', borderRadius: '50%', animation: 'tridock-spin 0.8s linear infinite' }} />
+      <style>{`@keyframes tridock-spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  )
+}
+
 function Card({ title, subtitle, children, tone = 'default' }) {
   const toneStyles = {
     default: { border: '1px solid #343942', background: '#171a20' },
@@ -165,9 +174,12 @@ function NavTabs({ active, onChange, badges = {} }) {
     ['overview', 'Overview'],
     ['receive', 'Receive'],
     ['send', 'Send'],
+    ['staking', 'Staking'],
     ['messages', 'Messages'],
     ['transactions', 'Transactions'],
+    ['contacts', 'Contacts'],
     ['addresses', 'Address Book'],
+    ['settings', 'Settings'],
     ['backup', 'Backup'],
     ['debug', 'Debug'],
   ]
@@ -288,6 +300,26 @@ export default function App() {
   const [msgKeys, setMsgKeys] = useState([])
   const [msgUnreadCount, setMsgUnreadCount] = useState(0)
 
+  // Staking panel
+  const [stakingPanelTab, setStakingPanelTab] = useState('status')
+
+  // Contacts
+  const [contacts, setContacts] = useState([])
+  const [contactsLoading, setContactsLoading] = useState(false)
+  const [contactsStatus, setContactsStatus] = useState('')
+  const [editingContact, setEditingContact] = useState(null)
+  const [contactForm, setContactForm] = useState({ name: '', address: '', label: '', note: '' })
+
+  // Settings
+  const [settings, setSettings] = useState({ currency: 'TRI', autoLockMinutes: 15, showBalances: true, onionRpc: '' })
+  const [settingsSaved, setSettingsSaved] = useState('')
+
+  // Send confirmation overlay
+  const [sendConfirm, setSendConfirm] = useState(null)
+
+  // Loading state
+  const [initialLoad, setInitialLoad] = useState(true)
+
   // Tick wallet unlock countdown every second; when it hits 0, refresh capabilities
   const countdownRef = useRef(null)
   useEffect(() => {
@@ -349,8 +381,10 @@ export default function App() {
         // Load backups and messages separately so failures don't block main UI
         loadBackups()
         loadMessages()
+        loadContacts()
 
         if (cancelled) return
+        setInitialLoad(false)
 
         setHealth(healthData)
         setNodeState(stateData)
@@ -535,6 +569,16 @@ export default function App() {
         setMsgUnreadCount(unread)
       }
     } catch { /* ignore messaging errors — feature may not be available */ }
+  }
+
+  async function loadContacts() {
+    try {
+      setContactsLoading(true)
+      const res = await fetch('/api/contacts')
+      const data = await res.json()
+      if (data?.contacts) setContacts(data.contacts)
+    } catch { /* contacts may not be available */ }
+    finally { setContactsLoading(false) }
   }
 
   async function handleSendMessage() {
@@ -879,7 +923,13 @@ export default function App() {
           <Field label="Memo / label" disabled={false} value={sendForm.memo} onChange={(e) => setSendForm((prev) => ({ ...prev, memo: e.target.value }))} placeholder="Optional note" />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <ActionButton onClick={handlePreviewSend}>Preview send</ActionButton>
-            <ActionButton tone="ok" onClick={handleBroadcastSend} disabled={!sendPreviewData?.canBroadcast}>Broadcast send</ActionButton>
+            <ActionButton tone="ok" onClick={() => {
+              if (sendPreviewData?.canBroadcast) {
+                setSendConfirm({ address: sendForm.address, amount: sendForm.amount, fee: sendPreviewData.estimatedFee, total: sendPreviewData.estimatedTotal, memo: sendForm.memo })
+              } else {
+                handleBroadcastSend()
+              }
+            }} disabled={!sendPreviewData?.canBroadcast}>Broadcast send</ActionButton>
           </div>
           {sendPreviewStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{sendPreviewStatus}</div> : null}
           {broadcastStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{broadcastStatus}</div> : null}
@@ -1621,18 +1671,30 @@ export default function App() {
     overview: overviewPanel,
     receive: receivePanel,
     send: sendPanel,
+    staking: stakingPanel,
     messages: messagesPanel,
     transactions: transactionsPanel,
+    contacts: contactsPanel,
     addresses: addressesPanel,
+    settings: settingsPanel,
     backup: backupPanel,
     debug: debugPanel,
   }
 
   return (
     <ErrorBoundary>
-      <div style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #121318 0%, #0d0e12 100%)', color: '#edf2f7', padding: 20, fontFamily: 'Segoe UI, sans-serif' }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .tridock-main [style*="grid-template-columns"] {
+            grid-template-columns: 1fr !important;
+          }
+          .tridock-header { flex-direction: column; align-items: flex-start !important; }
+          .tridock-header > div:last-child { flex-wrap: wrap; }
+        }
+      `}</style>
+      <div className="tridock-main" style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #121318 0%, #0d0e12 100%)', color: '#edf2f7', padding: 20, fontFamily: 'Segoe UI, sans-serif' }}>
         <div style={{ maxWidth: 1320, margin: '0 auto', border: '1px solid #404652', borderRadius: 14, overflow: 'hidden', background: '#16191f', boxShadow: '0 20px 60px rgba(0,0,0,.45)' }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid #343942', background: 'linear-gradient(180deg, #2a2e36, #20242b)' }}>
+          <div className="tridock-header" style={{ padding: '14px 18px', borderBottom: '1px solid #343942', background: 'linear-gradient(180deg, #2a2e36, #20242b)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <img src={triLogo} alt="Triangles logo" style={{ height: 42, width: 'auto', display: 'block', filter: 'drop-shadow(0 8px 18px rgba(0,0,0,.35))' }} />
@@ -1745,7 +1807,12 @@ export default function App() {
 
           <div style={{ padding: 18 }}>
             <NavTabs active={activeTab} onChange={setActiveTab} badges={{ messages: msgUnreadCount }} />
-            {panelByTab[activeTab]}
+            {initialLoad ? (
+              <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+                <Spinner />
+                <div style={{ color: '#aeb7c4', marginTop: 16, fontSize: 14 }}>Connecting to your TRIdock node…</div>
+              </div>
+            ) : panelByTab[activeTab]}
             {summaryError ? <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: '#23161a', border: '1px solid #6a3943', color: '#ffd7de' }}><strong>RPC note:</strong> {summaryError}</div> : null}
           </div>
         </div>
