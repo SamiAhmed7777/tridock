@@ -1197,6 +1197,51 @@ app.delete('/api/nodes/:index', async (req, res) => {
   res.json({ ok: true })
 })
 
+// ─── Contacts ───────────────────────────────────────────────────────────
+const contactsPath = path.join(dataDir, 'contacts.json')
+function loadContacts() {
+  try {
+    if (!fs.existsSync(contactsPath)) return []
+    return JSON.parse(fs.readFileSync(contactsPath, 'utf8'))
+  } catch { return [] }
+}
+function saveContacts(contacts) {
+  fs.writeFileSync(contactsPath, JSON.stringify(contacts, null, 2))
+}
+
+app.get('/api/contacts', async (req, res) => {
+  const contacts = loadContacts()
+  res.json({ ok: true, contacts })
+})
+
+app.post('/api/contacts', async (req, res) => {
+  const { name, address, label, note } = req.body || {}
+  if (!name || !address) return res.json({ ok: false, message: 'name and address required' })
+  const contacts = loadContacts().filter((c) => c.address !== address)
+  contacts.push({ name, address, label: label || '', note: note || '', createdAt: new Date().toISOString() })
+  saveContacts(contacts)
+  res.json({ ok: true, contacts })
+})
+
+app.put('/api/contacts/:address', async (req, res) => {
+  const addr = decodeURIComponent(req.params.address)
+  const { name, label, note } = req.body || {}
+  const contacts = loadContacts()
+  const idx = contacts.findIndex((c) => c.address === addr)
+  if (idx === -1) return res.json({ ok: false, message: 'contact not found' })
+  contacts[idx] = { ...contacts[idx], name, label: label || '', note: note || '' }
+  saveContacts(contacts)
+  res.json({ ok: true, contacts })
+})
+
+app.delete('/api/contacts/:address', async (req, res) => {
+  const addr = decodeURIComponent(req.params.address)
+  const contacts = loadContacts().filter((c) => c.address !== addr)
+  saveContacts(contacts)
+  res.json({ ok: true, contacts })
+})
+
+
 // ─── Static serving ──────────────────────────────────────────────────────────
 
 app.use(express.static(distDir))

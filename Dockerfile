@@ -85,3 +85,15 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD /healthcheck.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
+
+# Pre-create a minimal config so TRI daemon can start without network
+RUN mkdir -p /tri/data && \
+    echo 'rpcuser=triseed' > /tri/data/triangles.conf && \
+    echo 'rpcpassword=triSEED2026' >> /tri/data/triangles.conf && \
+    echo 'rpcport=19112' >> /tri/data/triangles.conf && \
+    echo 'bind=0.0.0.0:24112' >> /tri/data/triangles.conf && \
+    echo 'listen=1' >> /tri/data/triangles.conf && \
+    echo 'proxy=127.0.0.1:9050' >> /tri/data/triangles.conf && \
+    echo 'torcontrolport=9051' >> /tri/data/triangles.conf && \
+    echo 'externalip=127.0.0.1' >> /tri/data/triangles.conf && \
+    chmod 600 /tri/data/triangles.conf
