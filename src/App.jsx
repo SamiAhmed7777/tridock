@@ -1,6 +1,7 @@
 import React, { Component, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import triLogo from './assets/triangles-wordmark.png'
+import triIcon from './assets/triangles.png'
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -19,8 +20,8 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ minHeight: '100vh', background: '#111216', color: '#f3d7d9', padding: 24, fontFamily: 'Segoe UI, sans-serif' }}>
-          <h1 style={{ marginTop: 0 }}>TRIdock Web Wallet</h1>
+        <div style={{ minHeight: '100vh', background: '#0e0a0c', color: '#f4e8ec', padding: 24, fontFamily: 'Segoe UI, sans-serif' }}>
+          <h1 style={{ marginTop: 0, color: '#ff3a4a' }}>Triangles Web Wallet</h1>
           <p>The frontend crashed during render.</p>
           <pre style={{ whiteSpace: 'pre-wrap' }}>{this.state.message}</pre>
         </div>
@@ -33,7 +34,7 @@ class ErrorBoundary extends Component {
 function Spinner() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-      <div style={{ width: 32, height: 32, border: '3px solid #343942', borderTopColor: '#c1172f', borderRadius: '50%', animation: 'tridock-spin 0.8s linear infinite' }} />
+      <div style={{ width: 32, height: 32, border: '3px solid #2a1e22', borderTopColor: '#e8192f', borderRadius: '50%', animation: 'tridock-spin 0.8s linear infinite' }} />
       <style>{`@keyframes tridock-spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
@@ -41,17 +42,17 @@ function Spinner() {
 
 function Card({ title, subtitle, children, tone = 'default' }) {
   const toneStyles = {
-    default: { border: '1px solid #343942', background: '#171a20' },
-    accent: { border: '1px solid #4e5563', background: 'linear-gradient(180deg, rgba(193,23,47,.18), rgba(193,23,47,.06))' },
-    warning: { border: '1px solid #6a3943', background: '#23161a' },
-    ok: { border: '1px solid #2f5f43', background: 'linear-gradient(180deg, rgba(35,120,74,.18), rgba(35,120,74,.06))' },
+    default: { border: '1px solid #2d1f22', background: 'linear-gradient(180deg, #1a1215, #141012)', boxShadow: '0 2px 12px rgba(193,23,47,.08)' },
+    accent: { border: '1px solid #4a1f28', background: 'linear-gradient(180deg, rgba(193,23,47,.16), rgba(193,23,47,.04))', boxShadow: '0 4px 20px rgba(193,23,47,.12)' },
+    warning: { border: '1px solid #5a3040', background: 'linear-gradient(180deg, #1f1418, #171114)' },
+    ok: { border: '1px solid #1f4a35', background: 'linear-gradient(180deg, rgba(35,120,74,.14), rgba(35,120,74,.04))' },
   }
   return (
     <div style={{ padding: 16, borderRadius: 12, ...toneStyles[tone] }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', marginBottom: 12 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 16 }}>{title}</div>
-          {subtitle ? <div style={{ color: '#aeb7c4', marginTop: 4, fontSize: 13 }}>{subtitle}</div> : null}
+          {subtitle ? <div style={{ color: '#9a7a82', marginTop: 4, fontSize: 13 }}>{subtitle}</div> : null}
         </div>
       </div>
       {children}
@@ -61,33 +62,39 @@ function Card({ title, subtitle, children, tone = 'default' }) {
 
 function InfoRow({ label, value, mono = false }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '10px 12px', border: '1px solid #343942', borderRadius: 8, background: '#181b20' }}>
-      <span style={{ color: '#aeb7c4' }}>{label}</span>
-      <strong style={{ color: '#eef2f7', textAlign: 'right', wordBreak: 'break-word', fontFamily: mono ? 'ui-monospace, SFMono-Regular, monospace' : 'inherit' }}>{value || '—'}</strong>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, padding: '10px 12px', border: '1px solid #2a1e22', borderRadius: 8, background: 'linear-gradient(135deg, #140f12, #110d10)' }}>
+      <span style={{ color: '#b89aa2' }}>{label}</span>
+      <strong style={{ color: '#f4e8ec', textAlign: 'right', wordBreak: 'break-word', fontFamily: mono ? 'ui-monospace, SFMono-Regular, monospace' : 'inherit' }}>{value || '—'}</strong>
     </div>
   )
 }
 
-function StatusPill({ children, color = '#8aa2c8', background = 'rgba(138,162,200,.15)' }) {
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background, color, fontWeight: 700, fontSize: 12 }}>{children}</span>
+function StatusPill({ children, color = '#e8192f', background = 'rgba(232,25,47,.15)' }) {
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background, color, fontWeight: 700, fontSize: 12, border: '1px solid rgba(232,25,47,.2)' }}>{children}</span>
 }
 
 function ActionButton({ children, disabled = false, onClick, tone = 'default' }) {
   const styles = {
     default: {
-      border: disabled ? '1px solid #4a505c' : '1px solid #53698a',
-      background: disabled ? '#16191f' : '#202a38',
-      color: disabled ? '#7f8896' : '#ecf2ff',
+      border: disabled ? '1px solid #2a1e22' : '1px solid #4a2030',
+      background: disabled ? '#140f12' : 'linear-gradient(180deg, #2a1520, #1e1018)',
+      color: disabled ? '#5a4a50' : '#f4e0e8',
     },
     warning: {
-      border: disabled ? '1px solid #5a4146' : '1px solid #8b4b57',
-      background: disabled ? '#1a1416' : '#2b181d',
-      color: disabled ? '#987f84' : '#ffdbe1',
+      border: disabled ? '1px solid #3a2028' : '1px solid #6a3040',
+      background: disabled ? '#1a1014' : 'linear-gradient(180deg, #2a1820, #1e1015)',
+      color: disabled ? '#6a5060' : '#ffd0da',
     },
     ok: {
-      border: disabled ? '1px solid #44534a' : '1px solid #3b7a56',
-      background: disabled ? '#171c19' : '#193123',
-      color: disabled ? '#859189' : '#d7ffe7',
+      border: disabled ? '1px solid #203a28' : '1px solid #2a6a40',
+      background: disabled ? '#101a14' : 'linear-gradient(180deg, #142a1e, #0e1e14)',
+      color: disabled ? '#506a58' : '#d0ffd8',
+    },
+    primary: {
+      border: disabled ? '1px solid #3a1520' : '1px solid #e8192f',
+      background: disabled ? '#1a0e12' : 'linear-gradient(180deg, #e8192f, #b81224)',
+      color: disabled ? '#6a4050' : '#ffffff',
+      boxShadow: disabled ? 'none' : '0 4px 16px rgba(232,25,47,.3)',
     },
   }
   const style = styles[tone] || styles.default
@@ -115,8 +122,8 @@ function toneForCard(tone) {
 function Field({ label, placeholder, disabled = true, value = '', onChange, type = 'text' }) {
   return (
     <div>
-      <div style={{ color: '#aeb7c4', marginBottom: 6 }}>{label}</div>
-      <input type={type} disabled={disabled} value={value} onChange={onChange} placeholder={placeholder} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: disabled ? '#8c96a5' : '#eef2f7' }} />
+      <div style={{ color: '#9a7a82', marginBottom: 6 }}>{label}</div>
+      <input type={type} disabled={disabled} value={value} onChange={onChange} placeholder={placeholder} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #2a1e22', background: 'linear-gradient(180deg, #0e0a0c, #0a080a)', color: disabled ? '#5a4a50' : '#f4e8ec' }} />
     </div>
   )
 }
@@ -124,8 +131,8 @@ function Field({ label, placeholder, disabled = true, value = '', onChange, type
 function TextArea({ label, placeholder, disabled = false, value = '', onChange }) {
   return (
     <div>
-      <div style={{ color: '#aeb7c4', marginBottom: 6 }}>{label}</div>
-      <textarea disabled={disabled} value={value} onChange={onChange} placeholder={placeholder} rows={4} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: disabled ? '#8c96a5' : '#eef2f7', resize: 'vertical' }} />
+      <div style={{ color: '#9a7a82', marginBottom: 6 }}>{label}</div>
+      <textarea disabled={disabled} value={value} onChange={onChange} placeholder={placeholder} rows={4} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid #2a1e22', background: 'linear-gradient(180deg, #0e0a0c, #0a080a)', color: disabled ? '#5a4a50' : '#f4e8ec', resize: 'vertical' }} />
     </div>
   )
 }
@@ -184,27 +191,28 @@ function NavTabs({ active, onChange, badges = {} }) {
     ['debug', 'Debug'],
   ]
   return (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
       {tabs.map(([key, label]) => (
         <button
           key={key}
           onClick={() => onChange(key)}
           style={{
-            border: '1px solid #414955',
-            background: active === key ? '#2a3140' : '#171a20',
-            color: '#eef2f7',
+            border: active === key ? '1px solid #e8192f' : '1px solid #2a1e22',
+            background: active === key ? 'linear-gradient(180deg, rgba(232,25,47,.25), rgba(232,25,47,.08))' : '#140f12',
+            color: active === key ? '#ff8a98' : '#b89aa2',
             borderRadius: 999,
             padding: '9px 14px',
             cursor: 'pointer',
             fontWeight: 600,
             position: 'relative',
+            transition: 'all .15s ease',
           }}
         >
           {label}
           {badges[key] > 0 ? (
             <span style={{
               position: 'absolute', top: -4, right: -4,
-              background: '#c1172f', color: '#fff', fontSize: 10, fontWeight: 700,
+              background: '#e8192f', color: '#fff', fontSize: 10, fontWeight: 700,
               borderRadius: 999, minWidth: 18, height: 18, display: 'inline-flex',
               alignItems: 'center', justifyContent: 'center', padding: '0 5px',
             }}>{badges[key]}</span>
@@ -218,21 +226,21 @@ function NavTabs({ active, onChange, badges = {} }) {
 function ReceiveCard({ item, selected, onSelect, copied, onCopy }) {
   const txCount = Array.isArray(item.txids) ? item.txids.length : (item.confirmations ?? '—')
   return (
-    <div style={{ padding: 14, borderRadius: 12, border: selected ? '1px solid #5a7ab6' : '1px solid #343942', background: selected ? '#1a2330' : '#181b20' }}>
+    <div style={{ padding: 14, borderRadius: 12, border: selected ? '1px solid #5a7ab6' : '1px solid #2a1e22', background: selected ? '#1e1420' : '#140f12' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>{item.walletMeta?.label || 'Receive address'}</div>
-          <div style={{ color: '#aeb7c4', fontSize: 13 }}>{shortAddress(item.address)}</div>
+          <div style={{ color: '#9a7a82', fontSize: 13 }}>{shortAddress(item.address)}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontWeight: 700 }}>{formatAmount(item.amount)}</div>
-          <div style={{ color: '#aeb7c4', fontSize: 13 }}>Tx count: {txCount}</div>
+          <div style={{ color: '#9a7a82', fontSize: 13 }}>Tx count: {txCount}</div>
         </div>
       </div>
 
-      {item.walletMeta?.note ? <div style={{ marginTop: 10, color: '#c7d0dc', fontSize: 13 }}>{item.walletMeta.note}</div> : null}
+      {item.walletMeta?.note ? <div style={{ marginTop: 10, color: '#c0a8b0', fontSize: 13 }}>{item.walletMeta.note}</div> : null}
 
-      <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: '#111419', border: '1px solid #2d323c', fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>
+      <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: '#0e0a0c', border: '1px solid #221820', fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>
         {item.address || 'unknown address'}
       </div>
 
@@ -246,14 +254,14 @@ function ReceiveCard({ item, selected, onSelect, copied, onCopy }) {
 
 function TxRow({ tx, onSelect, selected }) {
   return (
-    <div onClick={() => onSelect(tx)} style={{ padding: 12, borderRadius: 10, border: selected ? '1px solid #5a7ab6' : '1px solid #343942', background: selected ? '#1a2330' : '#181b20', cursor: 'pointer' }}>
+    <div onClick={() => onSelect(tx)} style={{ padding: 12, borderRadius: 10, border: selected ? '1px solid #5a7ab6' : '1px solid #2a1e22', background: selected ? '#1e1420' : '#140f12', cursor: 'pointer' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <strong>{tx.category || 'unknown'}</strong>
-        <span style={{ color: '#aeb7c4' }}>{formatTime(tx.time)}</span>
+        <span style={{ color: '#9a7a82' }}>{formatTime(tx.time)}</span>
       </div>
-      <div style={{ marginTop: 8, color: '#eef2f7' }}>{formatAmount(tx.amount)}</div>
-      <div style={{ marginTop: 8, color: '#aeb7c4', fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>{tx.address || tx.txid || 'No address/txid reported'}</div>
-      {tx.confirmations !== undefined ? <div style={{ marginTop: 8, color: '#aeb7c4' }}>Confirmations: {tx.confirmations}</div> : null}
+      <div style={{ marginTop: 8, color: '#f4e8ec' }}>{formatAmount(tx.amount)}</div>
+      <div style={{ marginTop: 8, color: '#9a7a82', fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>{tx.address || tx.txid || 'No address/txid reported'}</div>
+      {tx.confirmations !== undefined ? <div style={{ marginTop: 8, color: '#9a7a82' }}>Confirmations: {tx.confirmations}</div> : null}
     </div>
   )
 }
@@ -454,7 +462,7 @@ export default function App() {
         const url = await QRCode.toDataURL(selectedReceive.address, {
           margin: 1,
           width: 220,
-          color: { dark: '#f1f5fb', light: '#111419' },
+          color: { dark: '#f1f5fb', light: '#0e0a0c' },
         })
         if (!cancelled) setQrDataUrl(url)
       } catch {
@@ -783,21 +791,21 @@ export default function App() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
         <Card title="Wallet balance">
           <div style={{ fontSize: 28, fontWeight: 800 }}>{formatAmount(summary?.balance)}</div>
-          <div style={{ color: '#aeb7c4', marginTop: 8 }}>Stake: {formatAmount(summary?.stake)}</div>
-          <div style={{ color: '#aeb7c4', marginTop: 4 }}>New mint: {formatAmount(summary?.newmint)}</div>
+          <div style={{ color: '#9a7a82', marginTop: 8 }}>Stake: {formatAmount(summary?.stake)}</div>
+          <div style={{ color: '#9a7a82', marginTop: 4 }}>New mint: {formatAmount(summary?.newmint)}</div>
         </Card>
         <Card title="Sync height">
           <div style={{ fontSize: 28, fontWeight: 800 }}>{summary?.blocks ?? nodeState?.localHeight ?? '—'}</div>
-          <div style={{ color: '#aeb7c4', marginTop: 8 }}>Connections: {summary?.connections ?? '—'}</div>
-          <div style={{ color: '#aeb7c4', marginTop: 4 }}>Updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}</div>
+          <div style={{ color: '#9a7a82', marginTop: 8 }}>Connections: {summary?.connections ?? '—'}</div>
+          <div style={{ color: '#9a7a82', marginTop: 4 }}>Updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}</div>
         </Card>
         <Card title="Receive addresses">
           <div style={{ fontSize: 28, fontWeight: 800 }}>{addressCount(received)}</div>
-          <div style={{ color: '#aeb7c4', marginTop: 8 }}>Visible in wallet shell</div>
+          <div style={{ color: '#9a7a82', marginTop: 8 }}>Visible in wallet shell</div>
         </Card>
         <Card title="Transactions">
           <div style={{ fontSize: 28, fontWeight: 800 }}>{Array.isArray(summary?.transactions) ? summary.transactions.length : 0}</div>
-          <div style={{ color: '#aeb7c4', marginTop: 8 }}>Latest wallet activity snapshot</div>
+          <div style={{ color: '#9a7a82', marginTop: 8 }}>Latest wallet activity snapshot</div>
         </Card>
         <Card title="Wallet security" tone={capabilities?.wallet?.locked !== false ? 'warning' : 'ok'}>
           <div style={{ fontSize: 28, fontWeight: 800 }}>{capabilities?.wallet?.locked === false ? 'Unlocked' : 'Locked'}</div>
@@ -808,15 +816,15 @@ export default function App() {
           ) : capabilities?.wallet?.locked === false ? (
             <div style={{ color: '#8df0b1', marginTop: 8 }}>No auto-lock timeout set</div>
           ) : (
-            <div style={{ color: '#aeb7c4', marginTop: 8 }}>Wallet is locked</div>
+            <div style={{ color: '#9a7a82', marginTop: 8 }}>Wallet is locked</div>
           )}
           {capabilities?.wallet?.encrypted ? (
-            <div style={{ color: '#aeb7c4', marginTop: 4, fontSize: 12 }}>Encryption: enabled</div>
+            <div style={{ color: '#9a7a82', marginTop: 4, fontSize: 12 }}>Encryption: enabled</div>
           ) : (
-            <div style={{ color: '#aeb7c4', marginTop: 4, fontSize: 12 }}>Encryption: not enabled</div>
+            <div style={{ color: '#9a7a82', marginTop: 4, fontSize: 12 }}>Encryption: not enabled</div>
           )}
           {capabilities?.wallet?.unlockedUntil ? (
-            <div style={{ color: '#aeb7c4', marginTop: 4, fontSize: 12 }}>
+            <div style={{ color: '#9a7a82', marginTop: 4, fontSize: 12 }}>
               Expires: {new Date(capabilities.wallet.unlockedUntil * 1000).toLocaleTimeString()}
             </div>
           ) : null}
@@ -827,7 +835,7 @@ export default function App() {
               <ActionButton tone="ok" style={{ marginTop: 10 }} onClick={handleUnlockWallet}>Unlock wallet</ActionButton>
             )
           ) : null}
-          {walletActionStatus ? <div style={{ marginTop: 8, fontSize: 12, color: '#aeb7c4' }}>{walletActionStatus}</div> : null}
+          {walletActionStatus ? <div style={{ marginTop: 8, fontSize: 12, color: '#9a7a82' }}>{walletActionStatus}</div> : null}
         </Card>
         <Card title="Staking" tone={toneForCard(summary?.staking?.staking ? 'ok' : summary?.staking?.enabled ? 'warning' : 'muted')}>
           <div style={{ fontSize: 28, fontWeight: 800 }}>
@@ -841,7 +849,7 @@ export default function App() {
           {summary?.staking?.errors ? (
             <div style={{ color: '#ff7d7d', marginTop: 4, fontSize: 12 }}>Errors: {summary.staking.errors}</div>
           ) : null}
-          <div style={{ color: '#aeb7c4', marginTop: 8 }}>
+          <div style={{ color: '#9a7a82', marginTop: 8 }}>
             {summary?.staking?.expectedtime && Number(summary.staking.expectedtime) > 0
               ? `Next stake in ~${Math.round(Number(summary.staking.expectedtime) / 60)}min`
               : summary?.staking?.staking ? 'Staking now'
@@ -878,7 +886,7 @@ export default function App() {
               copied={copiedAddress === item.address}
               onCopy={handleCopyAddress}
             />
-          )) : <div style={{ color: '#aeb7c4' }}>No receive-address data yet. If RPC is warming up, this will fill in automatically.</div>}
+          )) : <div style={{ color: '#9a7a82' }}>No receive-address data yet. If RPC is warming up, this will fill in automatically.</div>}
         </div>
       </Card>
 
@@ -891,8 +899,8 @@ export default function App() {
               <InfoRow label="Known txids" value={Array.isArray(selectedReceive.txids) ? selectedReceive.txids.length : '—'} />
               <Field label="Label" disabled={false} value={labelDrafts[selectedReceive.address] || ''} onChange={(e) => setLabelDrafts((prev) => ({ ...prev, [selectedReceive.address]: e.target.value }))} placeholder="Friendly label" />
               <TextArea label="Note" value={noteDrafts[selectedReceive.address] || ''} onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [selectedReceive.address]: e.target.value }))} placeholder="What this address is for" />
-              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: '#111419', border: '1px solid #2d323c', minHeight: 160, display: 'grid', placeItems: 'center' }}>
-                {qrDataUrl ? <img src={qrDataUrl} alt="Receive address QR code" style={{ width: 220, height: 220, objectFit: 'contain', imageRendering: 'pixelated' }} /> : <div style={{ color: '#aeb7c4' }}>Generating QR…</div>}
+              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: '#0e0a0c', border: '1px solid #221820', minHeight: 160, display: 'grid', placeItems: 'center' }}>
+                {qrDataUrl ? <img src={qrDataUrl} alt="Receive address QR code" style={{ width: 220, height: 220, objectFit: 'contain', imageRendering: 'pixelated' }} /> : <div style={{ color: '#9a7a82' }}>Generating QR…</div>}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <ActionButton onClick={() => handleCopyAddress(selectedReceive.address)}>{copiedAddress === selectedReceive.address ? 'Copied' : 'Copy full address'}</ActionButton>
@@ -900,14 +908,14 @@ export default function App() {
                 <ActionButton tone="ok" onClick={() => handleSaveLabel(selectedReceive.address)}>Save label + note</ActionButton>
               </div>
             </div>
-          ) : <div style={{ color: '#aeb7c4' }}>Pick a receive address to inspect it here.</div>}
+          ) : <div style={{ color: '#9a7a82' }}>Pick a receive address to inspect it here.</div>}
         </Card>
 
         <Card title="Generate address" subtitle="Guarded new-address creation">
           <div style={{ display: 'grid', gap: 10 }}>
             <Field label="New address label" disabled={false} value={newAddressLabel} onChange={(e) => setNewAddressLabel(e.target.value)} placeholder="Savings, exchange, cold, etc." />
             <ActionButton onClick={handleGenerateAddress} disabled={!contracts?.addressGeneration?.available}>Generate new address</ActionButton>
-            {addressGenStatus ? <div style={{ color: '#cdd6e2' }}>{addressGenStatus}</div> : null}
+            {addressGenStatus ? <div style={{ color: '#d0b8c0' }}>{addressGenStatus}</div> : null}
           </div>
         </Card>
       </div>
@@ -931,8 +939,8 @@ export default function App() {
               }
             }} disabled={!sendPreviewData?.canBroadcast}>Broadcast send</ActionButton>
           </div>
-          {sendPreviewStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{sendPreviewStatus}</div> : null}
-          {broadcastStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{broadcastStatus}</div> : null}
+          {sendPreviewStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#140f12', border: '1px solid #2a1e22', color: '#d0b8c0' }}>{sendPreviewStatus}</div> : null}
+          {broadcastStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#140f12', border: '1px solid #2a1e22', color: '#d0b8c0' }}>{broadcastStatus}</div> : null}
           {broadcastResult ? (
             <div style={{ padding: 12, borderRadius: 10, background: broadcastResult.ok ? 'rgba(97,214,128,.1)' : 'rgba(255,125,125,.1)', border: `1px solid ${broadcastResult.ok ? '#8df0b1' : '#ff7d7d'}`, color: broadcastResult.ok ? '#8df0b1' : '#ff7d7d' }}>
               {broadcastResult.ok ? (
@@ -940,19 +948,19 @@ export default function App() {
                   <div style={{ fontWeight: 700, marginBottom: 6 }}>Transaction submitted ✓</div>
                   {broadcastResult.sent ? (
                     <div style={{ display: 'grid', gap: 4, fontSize: 13 }}>
-                      <div>Amount: <span style={{ color: '#cdd6e2' }}>{broadcastResult.sent.amount} TRI</span></div>
-                      <div>To: <span style={{ color: '#cdd6e2', fontFamily: 'monospace' }}>{broadcastResult.sent.address}</span></div>
-                      <div>Fee: <span style={{ color: '#cdd6e2' }}>{broadcastResult.sent.estimatedFee} TRI</span></div>
-                      <div>Total: <span style={{ color: '#cdd6e2' }}>{broadcastResult.sent.estimatedTotal} TRI</span></div>
+                      <div>Amount: <span style={{ color: '#d0b8c0' }}>{broadcastResult.sent.amount} TRI</span></div>
+                      <div>To: <span style={{ color: '#d0b8c0', fontFamily: 'monospace' }}>{broadcastResult.sent.address}</span></div>
+                      <div>Fee: <span style={{ color: '#d0b8c0' }}>{broadcastResult.sent.estimatedFee} TRI</span></div>
+                      <div>Total: <span style={{ color: '#d0b8c0' }}>{broadcastResult.sent.estimatedTotal} TRI</span></div>
                     </div>
                   ) : null}
-                  <div style={{ marginTop: 6, fontSize: 12, color: '#aeb7c4' }}>TXID: <span style={{ fontFamily: 'monospace', color: '#cdd6e2' }}>{broadcastResult.txid}</span></div>
+                  <div style={{ marginTop: 6, fontSize: 12, color: '#9a7a82' }}>TXID: <span style={{ fontFamily: 'monospace', color: '#d0b8c0' }}>{broadcastResult.txid}</span></div>
                 </>
               ) : (
                 <>
                   <div style={{ fontWeight: 700, marginBottom: 4 }}>Broadcast failed ✗</div>
-                  <div style={{ fontSize: 13, color: '#cdd6e2' }}>{broadcastResult.message}</div>
-                  {broadcastResult.code ? <div style={{ fontSize: 11, color: '#aeb7c4', marginTop: 4 }}>Code: {broadcastResult.code}</div> : null}
+                  <div style={{ fontSize: 13, color: '#d0b8c0' }}>{broadcastResult.message}</div>
+                  {broadcastResult.code ? <div style={{ fontSize: 11, color: '#9a7a82', marginTop: 4 }}>Code: {broadcastResult.code}</div> : null}
                 </>
               )}
             </div>
@@ -980,13 +988,13 @@ export default function App() {
       <Card title="Recent transactions" subtitle="Read-only live activity view">
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           {['all', 'receive', 'send', 'stake', 'generate'].map((kind) => (
-            <button key={kind} onClick={() => setSelectedTx(kind)} style={{ border: '1px solid #414955', background: selectedTx === kind ? '#2a3140' : '#171a20', color: '#eef2f7', borderRadius: 999, padding: '8px 12px', cursor: 'pointer' }}>{kind}</button>
+            <button key={kind} onClick={() => setSelectedTx(kind)} style={{ border: '1px solid #3a2530', background: selectedTx === kind ? '#2a1820' : '#120d10', color: '#f4e8ec', borderRadius: 999, padding: '8px 12px', cursor: 'pointer' }}>{kind}</button>
           ))}
         </div>
         <div style={{ display: 'grid', gap: 10 }}>
           {txs.length ? txs.map((tx, index) => (
             <TxRow key={`${tx.txid || index}-${index}`} tx={tx} onSelect={setSelectedTransaction} selected={selectedTransaction?.txid === tx.txid && selectedTransaction?.time === tx.time} />
-          )) : <div style={{ color: '#aeb7c4' }}>No transactions to show for this filter yet.</div>}
+          )) : <div style={{ color: '#9a7a82' }}>No transactions to show for this filter yet.</div>}
         </div>
       </Card>
 
@@ -1001,7 +1009,7 @@ export default function App() {
             <InfoRow label="TXID" value={formatHash(selectedTransaction.txid)} mono />
             <InfoRow label="Raw address" value={selectedTransaction.address || '—'} mono />
           </div>
-        ) : <div style={{ color: '#aeb7c4' }}>Click a transaction on the left to open its detail view.</div>}
+        ) : <div style={{ color: '#9a7a82' }}>Click a transaction on the left to open its detail view.</div>}
       </Card>
     </div>
   )
@@ -1011,19 +1019,19 @@ export default function App() {
       <Card title="Address book" subtitle="Persisted labels and notes">
         <div style={{ display: 'grid', gap: 10 }}>
           {received.length ? received.map((item, index) => (
-            <div key={`${item.address}-book-${index}`} style={{ padding: 12, borderRadius: 10, border: '1px solid #343942', background: '#181b20' }}>
+            <div key={`${item.address}-book-${index}`} style={{ padding: 12, borderRadius: 10, border: '1px solid #2a1e22', background: '#140f12' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
                 <strong>{labels[item.address]?.label || item.walletMeta?.label || 'Wallet address'}</strong>
-                <span style={{ color: '#aeb7c4' }}>{formatAmount(item.amount)}</span>
+                <span style={{ color: '#9a7a82' }}>{formatAmount(item.amount)}</span>
               </div>
               <div style={{ marginTop: 8, fontFamily: 'ui-monospace, SFMono-Regular, monospace', wordBreak: 'break-all' }}>{item.address}</div>
-              {(labels[item.address]?.note || item.walletMeta?.note) ? <div style={{ marginTop: 8, color: '#c7d0dc' }}>{labels[item.address]?.note || item.walletMeta?.note}</div> : null}
+              {(labels[item.address]?.note || item.walletMeta?.note) ? <div style={{ marginTop: 8, color: '#c0a8b0' }}>{labels[item.address]?.note || item.walletMeta?.note}</div> : null}
               <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
                 <ActionButton onClick={() => handleCopyAddress(item.address)}>{copiedAddress === item.address ? 'Copied' : 'Copy'}</ActionButton>
                 <ActionButton onClick={() => { setActiveTab('receive'); setSelectedAddress(item.address) }}>Edit</ActionButton>
               </div>
             </div>
-          )) : <div style={{ color: '#aeb7c4' }}>Address book will populate from wallet receive data when RPC is ready.</div>}
+          )) : <div style={{ color: '#9a7a82' }}>Address book will populate from wallet receive data when RPC is ready.</div>}
         </div>
       </Card>
 
@@ -1047,7 +1055,7 @@ export default function App() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <ActionButton onClick={handleBackupAction}>Create backup export</ActionButton>
           </div>
-          {backupStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2' }}>{backupStatus}</div> : null}
+          {backupStatus ? <div style={{ padding: 10, borderRadius: 10, background: '#140f12', border: '1px solid #2a1e22', color: '#d0b8c0' }}>{backupStatus}</div> : null}
           {backupData ? (
             <div style={{ display: 'grid', gap: 8 }}>
               <InfoRow label="Filename" value={backupData.filename} mono />
@@ -1066,20 +1074,20 @@ export default function App() {
 
       <Card title="Available backups" subtitle="Download any backup to keep a local copy">
         {backups.length === 0 ? (
-          <div style={{ color: '#aeb7c4', fontSize: 13 }}>No backups yet. Create one to get started.</div>
+          <div style={{ color: '#9a7a82', fontSize: 13 }}>No backups yet. Create one to get started.</div>
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
             {backups.map((b) => (
-              <div key={b.name} style={{ padding: '8px 10px', borderRadius: 8, background: '#1e222b', border: '1px solid #343942', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <div key={b.name} style={{ padding: '8px 10px', borderRadius: 8, background: '#1e222b', border: '1px solid #2a1e22', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontFamily: 'monospace', color: '#cdd6e2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</div>
-                  <div style={{ fontSize: 11, color: '#aeb7c4', marginTop: 2 }}>
+                  <div style={{ fontSize: 13, fontFamily: 'monospace', color: '#d0b8c0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</div>
+                  <div style={{ fontSize: 11, color: '#9a7a82', marginTop: 2 }}>
                     {b.type === 'wallet-dat' ? 'wallet-dat · ' : 'export · '}{Math.round(b.size / 1024)}KB · {new Date(b.modified).toLocaleString()}
                   </div>
                 </div>
                 <button
                   onClick={() => window.open(`/api/wallet/backups/${encodeURIComponent(b.name)}`, '_blank')}
-                  style={{ background: '#2a3040', color: '#8df0b1', border: '1px solid #404652', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}
+                  style={{ background: '#2a3040', color: '#8df0b1', border: '1px solid #3a2030', borderRadius: 6, padding: '4px 10px', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}
                 >
                   ↓
                 </button>
@@ -1113,7 +1121,7 @@ export default function App() {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
         {['status', 'history', 'info'].map((tab) => (
           <button key={tab} onClick={() => setStakingPanelTab(tab)}
-            style={{ border: '1px solid #414955', background: stakingPanelTab === tab ? '#2a3140' : '#171a20', color: '#eef2f7', borderRadius: 999, padding: '8px 14px', cursor: 'pointer', fontWeight: 600 }}>
+            style={{ border: '1px solid #3a2530', background: stakingPanelTab === tab ? '#2a1820' : '#120d10', color: '#f4e8ec', borderRadius: 999, padding: '8px 14px', cursor: 'pointer', fontWeight: 600 }}>
             {tab === 'status' ? 'Status' : tab === 'history' ? 'History' : 'Info'}
           </button>
         ))}
@@ -1143,7 +1151,7 @@ export default function App() {
           </Card>
           <Card title="Stake balance">
             <div style={{ fontSize: 28, fontWeight: 800 }}>{formatAmount(summary?.stake)}</div>
-            <div style={{ color: '#aeb7c4', marginTop: 8, fontSize: 13 }}>Locked in stake</div>
+            <div style={{ color: '#9a7a82', marginTop: 8, fontSize: 13 }}>Locked in stake</div>
             <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
               <InfoRow label="Total" value={formatAmount(summary?.balance)} />
               <InfoRow label="New mint" value={formatAmount(summary?.newmint)} />
@@ -1157,11 +1165,11 @@ export default function App() {
                 <div style={{ fontSize: 28, fontWeight: 800 }}>
                   {((Number(summary.staking.weight) / Number(summary.staking.netstakeweight) * 100)).toFixed(2)}%
                 </div>
-                <div style={{ color: '#aeb7c4', fontSize: 13 }}>
+                <div style={{ color: '#9a7a82', fontSize: 13 }}>
                   You earn rewards proportionally to your share of total staked TRI.
                 </div>
               </div>
-            ) : <div style={{ color: '#aeb7c4' }}>Stake coins to see your network share.</div>}
+            ) : <div style={{ color: '#9a7a82' }}>Stake coins to see your network share.</div>}
           </Card>
         </div>
       ) : stakingPanelTab === 'history' ? (
@@ -1171,17 +1179,17 @@ export default function App() {
               const stakeTxs = (summary?.transactions || []).filter(
                 (tx) => tx.category === 'generate' || tx.category === 'stake'
               )
-              if (!stakeTxs.length) return <div style={{ color: '#aeb7c4' }}>No stake transactions yet.</div>
+              if (!stakeTxs.length) return <div style={{ color: '#9a7a82' }}>No stake transactions yet.</div>
               return stakeTxs.slice(0, 50).map((tx, i) => (
-                <div key={i} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #343942', background: '#181b20', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div key={i} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #2a1e22', background: '#140f12', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div>
                     <div style={{ fontWeight: 700 }}>{tx.category || 'reward'}</div>
-                    <div style={{ color: '#aeb7c4', fontSize: 12, marginTop: 4 }}>{formatTime(tx.time)}</div>
+                    <div style={{ color: '#9a7a82', fontSize: 12, marginTop: 4 }}>{formatTime(tx.time)}</div>
                     {tx.txid ? <div style={{ color: '#8aa2c8', fontSize: 11, fontFamily: 'monospace', marginTop: 2 }}>{formatHash(tx.txid)}</div> : null}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontWeight: 700, color: '#8df0b1' }}>+{formatAmount(tx.amount)}</div>
-                    <div style={{ color: '#aeb7c4', fontSize: 12, marginTop: 4 }}>{tx.confirmations ?? 0} conf</div>
+                    <div style={{ color: '#9a7a82', fontSize: 12, marginTop: 4 }}>{tx.confirmations ?? 0} conf</div>
                   </div>
                 </div>
               ))
@@ -1196,7 +1204,7 @@ export default function App() {
             <InfoRow label="Frequency" value="Every PoS block (~1-5 min)" />
             <InfoRow label="Minimum" value="No minimum" />
             <InfoRow label="Lock-up" value="While staking" />
-            <div style={{ padding: '10px 12px', borderRadius: 8, background: '#181b20', border: '1px solid #343942', color: '#aeb7c4', fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ padding: '10px 12px', borderRadius: 8, background: '#140f12', border: '1px solid #2a1e22', color: '#9a7a82', fontSize: 13, lineHeight: 1.6 }}>
               Keep your wallet unlocked and node online to earn rewards. Older UTXOs earn priority.
             </div>
           </div>
@@ -1210,20 +1218,20 @@ export default function App() {
   // ═══════════════════════════════════════════════════════════════
   function ContactRow({ contact, onEdit, onDelete, onSend }) {
     return (
-      <div style={{ padding: 14, borderRadius: 12, border: '1px solid #343942', background: '#181b20' }}>
+      <div style={{ padding: 14, borderRadius: 12, border: '1px solid #2a1e22', background: '#140f12' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15 }}>{contact.name}</div>
             {contact.label ? <div style={{ color: '#8aa2c8', fontSize: 12, marginTop: 2 }}>{contact.label}</div> : null}
           </div>
           <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-            <button onClick={() => onSend(contact)} style={{ background: '#1a2330', color: '#8df0b1', border: '1px solid #3b7a56', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Send</button>
-            <button onClick={() => onEdit(contact)} style={{ background: '#202a38', color: '#ecf2ff', border: '1px solid #53698a', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>Edit</button>
+            <button onClick={() => onSend(contact)} style={{ background: '#1e1420', color: '#8df0b1', border: '1px solid #3b7a56', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Send</button>
+            <button onClick={() => onEdit(contact)} style={{ background: '#1e1418', color: '#ecf2ff', border: '1px solid #53698a', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>Edit</button>
             <button onClick={() => onDelete(contact.address)} style={{ background: '#1a1416', color: '#ff7d7d', border: '1px solid #8b4b57', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>Delete</button>
           </div>
         </div>
         <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', color: '#8aa2c8', fontSize: 12 }}>{contact.address}</div>
-        {contact.note ? <div style={{ marginTop: 8, color: '#aeb7c4', fontSize: 13, fontStyle: 'italic' }}>{contact.note}</div> : null}
+        {contact.note ? <div style={{ marginTop: 8, color: '#9a7a82', fontSize: 13, fontStyle: 'italic' }}>{contact.note}</div> : null}
       </div>
     )
   }
@@ -1233,9 +1241,9 @@ export default function App() {
       <Card title="Contacts" subtitle="Your saved Triangles addresses">
         <div style={{ display: 'grid', gap: 10 }}>
           {contactsLoading ? (
-            <div style={{ color: '#aeb7c4' }}>Loading…</div>
+            <div style={{ color: '#9a7a82' }}>Loading…</div>
           ) : contacts.length === 0 ? (
-            <div style={{ color: '#aeb7c4', textAlign: 'center', padding: '24px 0' }}>
+            <div style={{ color: '#9a7a82', textAlign: 'center', padding: '24px 0' }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>📇</div>
               No contacts yet. Add your first one!
             </div>
@@ -1272,7 +1280,7 @@ export default function App() {
             />
           ))}
         </div>
-        {contactsStatus ? <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2', fontSize: 13 }}>{contactsStatus}</div> : null}
+        {contactsStatus ? <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#140f12', border: '1px solid #2a1e22', color: '#d0b8c0', fontSize: 13 }}>{contactsStatus}</div> : null}
       </Card>
 
       <Card title={editingContact ? 'Edit contact' : 'Add contact'} subtitle="Save frequently used addresses">
@@ -1281,11 +1289,11 @@ export default function App() {
           <Field label="TRI address" value={contactForm.address} onChange={(e) => setContactForm((f) => ({ ...f, address: e.target.value }))} placeholder="Tj… or onion address" />
           <Field label="Category" value={contactForm.label} onChange={(e) => setContactForm((f) => ({ ...f, label: e.target.value }))} placeholder="e.g. savings, exchange, family" />
           <div>
-            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Private note (never sent)</div>
+            <div style={{ color: '#9a7a82', marginBottom: 6 }}>Private note (never sent)</div>
             <textarea value={contactForm.note} onChange={(e) => setContactForm((f) => ({ ...f, note: e.target.value }))}
               placeholder="Private reminder about this contact…"
               rows={3}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#eef2f7', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #2a1e22', background: '#0e0a0c', color: '#f4e8ec', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <ActionButton
@@ -1342,24 +1350,24 @@ export default function App() {
       <Card title="Display">
         <div style={{ display: 'grid', gap: 12 }}>
           <div>
-            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Currency display</div>
+            <div style={{ color: '#9a7a82', marginBottom: 6 }}>Currency display</div>
             <select value={settings.currency} onChange={(e) => setSettings((s) => ({ ...s, currency: e.target.value }))}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#eef2f7' }}>
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #2a1e22', background: '#0e0a0c', color: '#f4e8ec' }}>
               <option value="TRI">TRI</option>
               <option value="mTRI">mTRI (milli-TRI)</option>
               <option value="sat">satoshis</option>
             </select>
           </div>
           <div>
-            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Auto-lock wallet</div>
+            <div style={{ color: '#9a7a82', marginBottom: 6 }}>Auto-lock wallet</div>
             <select value={settings.autoLockMinutes} onChange={(e) => setSettings((s) => ({ ...s, autoLockMinutes: Number(e.target.value) }))}
-              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#eef2f7' }}>
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #2a1e22', background: '#0e0a0c', color: '#f4e8ec' }}>
               {[5, 15, 30, 60, 120, 0].map((m) => <option key={m} value={m}>{m === 0 ? 'Never' : `${m} minutes`}</option>)}
             </select>
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
             <input type="checkbox" checked={settings.showBalances} onChange={(e) => setSettings((s) => ({ ...s, showBalances: e.target.checked }))} />
-            <span style={{ color: '#eef2f7' }}>Show balance amounts</span>
+            <span style={{ color: '#f4e8ec' }}>Show balance amounts</span>
           </label>
         </div>
       </Card>
@@ -1370,10 +1378,10 @@ export default function App() {
           <InfoRow label="Block height" value={summary?.blocks || nodeState?.localHeight || '—'} />
           <InfoRow label="Connections" value={summary?.connections || '—'} />
           <div>
-            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Onion RPC (Tor)</div>
+            <div style={{ color: '#9a7a82', marginBottom: 6 }}>Onion RPC (Tor)</div>
             <input value={settings.onionRpc} onChange={(e) => setSettings((s) => ({ ...s, onionRpc: e.target.value }))}
               placeholder="http://your-onion:19112"
-              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#eef2f7', boxSizing: 'border-box' }} />
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #2a1e22', background: '#0e0a0c', color: '#f4e8ec', boxSizing: 'border-box' }} />
           </div>
           <ActionButton tone="ok" disabled={!settings.onionRpc}
             onClick={async () => {
@@ -1401,7 +1409,7 @@ export default function App() {
               <ActionButton onClick={() => handleLockWallet()}>Lock wallet</ActionButton>
             )}
           </div>
-          {walletActionStatus ? <div style={{ color: '#aeb7c4', fontSize: 13 }}>{walletActionStatus}</div> : null}
+          {walletActionStatus ? <div style={{ color: '#9a7a82', fontSize: 13 }}>{walletActionStatus}</div> : null}
         </div>
       </Card>
 
@@ -1410,13 +1418,13 @@ export default function App() {
           <InfoRow label="TRIdock" value="v1.0" />
           <InfoRow label="TRI daemon" value={summary?.version || '—'} />
           <InfoRow label="Protocol" value="TRI v5.8.x" />
-          <div style={{ padding: '10px 12px', borderRadius: 8, background: '#181b20', border: '1px solid #343942', color: '#aeb7c4', fontSize: 12, lineHeight: 1.6 }}>
+          <div style={{ padding: '10px 12px', borderRadius: 8, background: '#140f12', border: '1px solid #2a1e22', color: '#9a7a82', fontSize: 12, lineHeight: 1.6 }}>
             Triangles — hybrid PoW/PoS blockchain with secure messaging, staking, and onion routing. Keys stay on your node.
           </div>
         </div>
       </Card>
 
-      {settingsSaved ? <div style={{ gridColumn: '1 / -1', padding: 10, borderRadius: 8, background: '#181b20', border: '1px solid #343942', color: '#8df0b1' }}>{settingsSaved}</div> : null}
+      {settingsSaved ? <div style={{ gridColumn: '1 / -1', padding: 10, borderRadius: 8, background: '#140f12', border: '1px solid #2a1e22', color: '#8df0b1' }}>{settingsSaved}</div> : null}
     </div>
   )
 
@@ -1425,29 +1433,29 @@ export default function App() {
   // ═══════════════════════════════════════════════════════════════
   const sendConfirmOverlay = sendConfirm ? (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: '#171a20', border: '1px solid #c1172f', borderRadius: 16, padding: 28, maxWidth: 520, width: '100%', boxShadow: '0 0 60px rgba(193,23,47,.4)' }}>
+      <div style={{ background: '#120d10', border: '1px solid #e8192f', borderRadius: 16, padding: 28, maxWidth: 520, width: '100%', boxShadow: '0 0 60px rgba(193,23,47,.4)' }}>
         <h2 style={{ marginTop: 0, color: '#ffd7de', fontFamily: 'Segoe UI, sans-serif', fontSize: 20 }}>⚠️ Confirm send</h2>
         <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
-          <div style={{ padding: '12px 14px', borderRadius: 10, background: '#111419', border: '1px solid #343942' }}>
-            <div style={{ color: '#aeb7c4', fontSize: 12, marginBottom: 4 }}>To address</div>
-            <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', color: '#eef2f7', fontSize: 13 }}>{sendConfirm.address}</div>
+          <div style={{ padding: '12px 14px', borderRadius: 10, background: '#0e0a0c', border: '1px solid #2a1e22' }}>
+            <div style={{ color: '#9a7a82', fontSize: 12, marginBottom: 4 }}>To address</div>
+            <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', color: '#f4e8ec', fontSize: 13 }}>{sendConfirm.address}</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div style={{ padding: '12px 14px', borderRadius: 10, background: '#111419', border: '1px solid #343942' }}>
-              <div style={{ color: '#aeb7c4', fontSize: 12 }}>Amount</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#eef2f7' }}>{sendConfirm.amount} TRI</div>
+            <div style={{ padding: '12px 14px', borderRadius: 10, background: '#0e0a0c', border: '1px solid #2a1e22' }}>
+              <div style={{ color: '#9a7a82', fontSize: 12 }}>Amount</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#f4e8ec' }}>{sendConfirm.amount} TRI</div>
             </div>
-            <div style={{ padding: '12px 14px', borderRadius: 10, background: '#111419', border: '1px solid #343942' }}>
-              <div style={{ color: '#aeb7c4', fontSize: 12 }}>Fee</div>
-              <div style={{ fontSize: 16, fontWeight: 600, color: '#cdd6e2' }}>{formatAmount(sendConfirm.fee)}</div>
+            <div style={{ padding: '12px 14px', borderRadius: 10, background: '#0e0a0c', border: '1px solid #2a1e22' }}>
+              <div style={{ color: '#9a7a82', fontSize: 12 }}>Fee</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#d0b8c0' }}>{formatAmount(sendConfirm.fee)}</div>
             </div>
           </div>
-          <div style={{ padding: '12px 14px', borderRadius: 10, background: '#111419', border: '1px solid #343942' }}>
-            <div style={{ color: '#aeb7c4', fontSize: 12 }}>Total (amount + fee)</div>
+          <div style={{ padding: '12px 14px', borderRadius: 10, background: '#0e0a0c', border: '1px solid #2a1e22' }}>
+            <div style={{ color: '#9a7a82', fontSize: 12 }}>Total (amount + fee)</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: '#ffd7de' }}>{formatAmount(sendConfirm.total)} TRI</div>
           </div>
           {sendConfirm.memo ? (
-            <div style={{ padding: '10px 12px', borderRadius: 8, background: '#181b20', border: '1px solid #343942', color: '#aeb7c4', fontSize: 13 }}>
+            <div style={{ padding: '10px 12px', borderRadius: 8, background: '#140f12', border: '1px solid #2a1e22', color: '#9a7a82', fontSize: 13 }}>
               Memo: {sendConfirm.memo}
             </div>
           ) : null}
@@ -1528,7 +1536,7 @@ export default function App() {
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             {['inbox', 'outbox', 'compose'].map((tab) => (
               <button key={tab} onClick={() => { setMsgTab(tab); setSelectedMessage(null); setMsgStatus('') }}
-                style={{ border: '1px solid #414955', background: msgTab === tab ? '#2a3140' : '#171a20', color: '#eef2f7', borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+                style={{ border: '1px solid #3a2530', background: msgTab === tab ? '#2a1820' : '#120d10', color: '#f4e8ec', borderRadius: 999, padding: '6px 12px', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
                 {tab === 'inbox' ? `Inbox (${msgInbox.length})` : tab === 'outbox' ? `Outbox (${msgOutbox.length})` : 'Compose'}
               </button>
             ))}
@@ -1537,9 +1545,9 @@ export default function App() {
           {msgTab === 'compose' ? (
             <div style={{ display: 'grid', gap: 10 }}>
               <div>
-                <div style={{ fontSize: 12, color: '#aeb7c4', marginBottom: 4 }}>From address (leave empty for anonymous)</div>
+                <div style={{ fontSize: 12, color: '#9a7a82', marginBottom: 4 }}>From address (leave empty for anonymous)</div>
                 <select value={composeForm.from} onChange={(e) => setComposeForm((f) => ({ ...f, from: e.target.value }))}
-                  style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}>
+                  style={{ width: '100%', background: '#1a1015', color: '#d0b8c0', border: '1px solid #3a2030', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}>
                   <option value="">Anonymous (no sender identity)</option>
                   {msgFromAddresses.map((addr) => (
                     <option key={addr} value={addr}>{shortAddress(addr)}</option>
@@ -1549,13 +1557,13 @@ export default function App() {
               <Field label="To address" value={composeForm.to} onChange={(e) => setComposeForm((f) => ({ ...f, to: e.target.value }))} placeholder="Recipient TRI address" />
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                  <div style={{ fontSize: 12, color: '#aeb7c4' }}>Message</div>
-                  <div style={{ fontSize: 11, color: composeForm.text.length > 4096 ? '#ff7d7d' : '#aeb7c4' }}>{composeForm.text.length} / 4096</div>
+                  <div style={{ fontSize: 12, color: '#9a7a82' }}>Message</div>
+                  <div style={{ fontSize: 11, color: composeForm.text.length > 4096 ? '#ff7d7d' : '#9a7a82' }}>{composeForm.text.length} / 4096</div>
                 </div>
                 <textarea value={composeForm.text} onChange={(e) => setComposeForm((f) => ({ ...f, text: e.target.value }))}
                   placeholder="Type your encrypted message..."
                   rows={6}
-                  style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '8px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
+                  style={{ width: '100%', background: '#1a1015', color: '#d0b8c0', border: '1px solid #3a2030', borderRadius: 6, padding: '8px', fontSize: 13, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }}
                 />
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1570,15 +1578,15 @@ export default function App() {
           ) : (
             <div style={{ display: 'grid', gap: 8 }}>
               {currentMessages.length === 0 ? (
-                <div style={{ color: '#aeb7c4', padding: 12 }}>
+                <div style={{ color: '#9a7a82', padding: 12 }}>
                   {msgTab === 'inbox' ? 'No messages in inbox. Messages are retained for 48 hours on the network.' : 'No sent messages.'}
                 </div>
               ) : currentMessages.map((msg, i) => (
                 <div key={i} onClick={() => setSelectedMessage(msg)}
                   style={{
                     padding: 12, borderRadius: 10, cursor: 'pointer',
-                    border: selectedMessage === msg ? '1px solid #5a7ab6' : '1px solid #343942',
-                    background: selectedMessage === msg ? '#1a2330' : '#181b20',
+                    border: selectedMessage === msg ? '1px solid #5a7ab6' : '1px solid #2a1e22',
+                    background: selectedMessage === msg ? '#1e1420' : '#140f12',
                   }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>
@@ -1586,9 +1594,9 @@ export default function App() {
                         ? (msg.from === 'anon' ? <span style={{ color: '#b4a7ff' }}>Anonymous</span> : shortAddress(msg.from))
                         : shortAddress(msg.to)}
                     </div>
-                    <span style={{ color: '#aeb7c4', fontSize: 12 }}>{formatTime(msg.sent || msg.received)}</span>
+                    <span style={{ color: '#9a7a82', fontSize: 12 }}>{formatTime(msg.sent || msg.received)}</span>
                   </div>
-                  <div style={{ marginTop: 6, color: '#c7d0dc', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ marginTop: 6, color: '#c0a8b0', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {msg.text || '(empty message)'}
                   </div>
                 </div>
@@ -1600,19 +1608,19 @@ export default function App() {
         <Card title="Messaging keys" subtitle="Addresses enabled for receiving encrypted messages">
           <div style={{ display: 'grid', gap: 8 }}>
             {msgKeys.length === 0 ? (
-              <div style={{ color: '#aeb7c4' }}>No messaging keys loaded. Wallet may need to be unlocked.</div>
+              <div style={{ color: '#9a7a82' }}>No messaging keys loaded. Wallet may need to be unlocked.</div>
             ) : msgKeys.map((key) => (
-              <div key={key.address} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: 8, borderRadius: 8, background: '#181b20', border: '1px solid #343942' }}>
+              <div key={key.address} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: 8, borderRadius: 8, background: '#140f12', border: '1px solid #2a1e22' }}>
                 <div>
-                  <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 12, color: '#cdd6e2', wordBreak: 'break-all' }}>{key.address}</div>
-                  <div style={{ fontSize: 11, color: '#aeb7c4', marginTop: 2 }}>
+                  <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontSize: 12, color: '#d0b8c0', wordBreak: 'break-all' }}>{key.address}</div>
+                  <div style={{ fontSize: 11, color: '#9a7a82', marginTop: 2 }}>
                     Receive: {key.receiveOn ? <span style={{ color: '#8df0b1' }}>on</span> : <span style={{ color: '#ff8b9b' }}>off</span>}
-                    {' · '}Anon: {key.anonOn ? <span style={{ color: '#8df0b1' }}>on</span> : <span style={{ color: '#aeb7c4' }}>off</span>}
+                    {' · '}Anon: {key.anonOn ? <span style={{ color: '#8df0b1' }}>on</span> : <span style={{ color: '#9a7a82' }}>off</span>}
                     {key.label ? ` · ${key.label}` : ''}
                   </div>
                 </div>
                 <button onClick={() => handleToggleReceive(key.address, key.receiveOn)}
-                  style={{ background: key.receiveOn ? '#3a2020' : '#1a3020', color: key.receiveOn ? '#ff8b9b' : '#8df0b1', border: '1px solid #404652', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>
+                  style={{ background: key.receiveOn ? '#3a2020' : '#1a3020', color: key.receiveOn ? '#ff8b9b' : '#8df0b1', border: '1px solid #3a2030', borderRadius: 6, padding: '4px 10px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}>
                   {key.receiveOn ? 'Disable' : 'Enable'}
                 </button>
               </div>
@@ -1630,7 +1638,7 @@ export default function App() {
               <InfoRow label="To" value={selectedMessage.to || '—'} mono />
               {selectedMessage.sent && <InfoRow label="Sent" value={formatTime(selectedMessage.sent)} />}
               {selectedMessage.received && <InfoRow label="Received" value={formatTime(selectedMessage.received)} />}
-              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: '#111419', border: '1px solid #2d323c', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#edf2f7', fontSize: 13, lineHeight: 1.6, minHeight: 80 }}>
+              <div style={{ marginTop: 8, padding: 12, borderRadius: 10, background: '#0e0a0c', border: '1px solid #221820', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#f4e8ec', fontSize: 13, lineHeight: 1.6, minHeight: 80 }}>
                 {selectedMessage.text || '(empty message)'}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1644,7 +1652,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div style={{ color: '#aeb7c4', padding: 16, textAlign: 'center' }}>
+            <div style={{ color: '#9a7a82', padding: 16, textAlign: 'center' }}>
               Select a message from the inbox or outbox to view its contents here.
             </div>
           )}
@@ -1663,7 +1671,7 @@ export default function App() {
           </div>
         </Card>
       </div>
-      {msgStatus ? <div style={{ gridColumn: '1 / -1', marginTop: 4, padding: 10, borderRadius: 8, background: '#1a1e26', border: '1px solid #343942', color: '#cdd6e2', fontSize: 13 }}>{msgStatus}</div> : null}
+      {msgStatus ? <div style={{ gridColumn: '1 / -1', marginTop: 4, padding: 10, borderRadius: 8, background: '#1a1e26', border: '1px solid #2a1e22', color: '#d0b8c0', fontSize: 13 }}>{msgStatus}</div> : null}
     </div>
   )
 
@@ -1692,15 +1700,15 @@ export default function App() {
           .tridock-header > div:last-child { flex-wrap: wrap; }
         }
       `}</style>
-      <div className="tridock-main" style={{ minHeight: '100vh', background: 'linear-gradient(180deg, #121318 0%, #0d0e12 100%)', color: '#edf2f7', padding: 20, fontFamily: 'Segoe UI, sans-serif' }}>
-        <div style={{ maxWidth: 1320, margin: '0 auto', border: '1px solid #404652', borderRadius: 14, overflow: 'hidden', background: '#16191f', boxShadow: '0 20px 60px rgba(0,0,0,.45)' }}>
-          <div className="tridock-header" style={{ padding: '14px 18px', borderBottom: '1px solid #343942', background: 'linear-gradient(180deg, #2a2e36, #20242b)' }}>
+      <div className="tridock-main" style={{ minHeight: '100vh', background: 'radial-gradient(circle at top, rgba(232,25,47,.08), transparent 40%), linear-gradient(180deg, #0e0a0c 0%, #080608 100%)', color: '#f4e8ec', padding: 20, fontFamily: 'Segoe UI, sans-serif' }}>
+        <div style={{ maxWidth: 1320, margin: '0 auto', border: '1px solid #2d1a22', borderRadius: 14, overflow: 'hidden', background: 'linear-gradient(180deg, #120a0e, #0e080c)', boxShadow: '0 20px 60px rgba(232,25,47,.12), 0 40px 80px rgba(0,0,0,.5)' }}>
+          <div className="tridock-header" style={{ padding: '16px 20px', borderBottom: '1px solid #3a1a22', background: 'linear-gradient(180deg, #1e0e14, #140a0e)', boxShadow: '0 4px 24px rgba(232,25,47,.1)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <img src={triLogo} alt="Triangles logo" style={{ height: 42, width: 'auto', display: 'block', filter: 'drop-shadow(0 8px 18px rgba(0,0,0,.35))' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <img src={triIcon} alt="Triangles" style={{ height: 48, width: 48, display: 'block', filter: 'drop-shadow(0 0 16px rgba(232,25,47,.5))' }} />
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 700 }}>TRIdock Web Wallet</div>
-                  <div style={{ color: '#aeb7c4', marginTop: 4 }}>{isLightMode ? 'Light wallet connected to a remote Triangles node' : 'A full Docker-based Triangles wallet with live controls, clear readiness, and real node visibility'}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#ff3a4a', letterSpacing: '.02em' }}>Triangles</div>
+                  <div style={{ color: '#9a7a82', marginTop: 2, fontSize: 13 }}>Web Wallet{isLightMode ? ' — Light Mode' : ''}</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1708,9 +1716,9 @@ export default function App() {
                   value={nodes.find((n) => n.active)?.id || ''}
                   onChange={(e) => handleSwitchNode(e.target.value)}
                   style={{
-                    background: '#232730',
-                    color: '#cdd6e2',
-                    border: '1px solid #404652',
+                    background: '#1a1015',
+                    color: '#d0b8c0',
+                    border: '1px solid #3a2030',
                     borderRadius: 8,
                     padding: '6px 10px',
                     fontSize: 13,
@@ -1727,7 +1735,7 @@ export default function App() {
                 <button
                   onClick={() => setShowAddNode((v) => !v)}
                   title="Add a new node"
-                  style={{ background: '#2a3040', color: '#8df0b1', border: '1px solid #404652', borderRadius: 8, padding: '5px 10px', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}
+                  style={{ background: '#2a3040', color: '#8df0b1', border: '1px solid #3a2030', borderRadius: 8, padding: '5px 10px', fontSize: 13, cursor: 'pointer', fontWeight: 700 }}
                 >
                   +
                 </button>
@@ -1744,44 +1752,44 @@ export default function App() {
           </div>
 
           {showAddNode ? (
-            <div style={{ padding: '12px 18px', borderBottom: '1px solid #343942', background: '#1a1e26' }}>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid #2a1e22', background: '#1a1e26' }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#8df0b1', marginBottom: 10 }}>Add a new TRIdock node</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
                 <div>
-                  <div style={{ fontSize: 11, color: '#aeb7c4', marginBottom: 4 }}>Name</div>
+                  <div style={{ fontSize: 11, color: '#9a7a82', marginBottom: 4 }}>Name</div>
                   <input
                     placeholder="DNS2, Contabo, etc."
                     value={addNodeForm.name}
                     onChange={(e) => setAddNodeForm((f) => ({ ...f, name: e.target.value }))}
-                    style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
+                    style={{ width: '100%', background: '#1a1015', color: '#d0b8c0', border: '1px solid #3a2030', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
                   />
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: '#aeb7c4', marginBottom: 4 }}>RPC URL</div>
+                  <div style={{ fontSize: 11, color: '#9a7a82', marginBottom: 4 }}>RPC URL</div>
                   <input
                     placeholder="http://host:19119"
                     value={addNodeForm.url}
                     onChange={(e) => setAddNodeForm((f) => ({ ...f, url: e.target.value }))}
-                    style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
+                    style={{ width: '100%', background: '#1a1015', color: '#d0b8c0', border: '1px solid #3a2030', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
                   />
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: '#aeb7c4', marginBottom: 4 }}>RPC User</div>
+                  <div style={{ fontSize: 11, color: '#9a7a82', marginBottom: 4 }}>RPC User</div>
                   <input
                     placeholder="user"
                     value={addNodeForm.user}
                     onChange={(e) => setAddNodeForm((f) => ({ ...f, user: e.target.value }))}
-                    style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
+                    style={{ width: '100%', background: '#1a1015', color: '#d0b8c0', border: '1px solid #3a2030', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
                   />
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, color: '#aeb7c4', marginBottom: 4 }}>RPC Password</div>
+                  <div style={{ fontSize: 11, color: '#9a7a82', marginBottom: 4 }}>RPC Password</div>
                   <input
                     type="password"
                     placeholder="password"
                     value={addNodeForm.password}
                     onChange={(e) => setAddNodeForm((f) => ({ ...f, password: e.target.value }))}
-                    style={{ width: '100%', background: '#232730', color: '#cdd6e2', border: '1px solid #404652', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
+                    style={{ width: '100%', background: '#1a1015', color: '#d0b8c0', border: '1px solid #3a2030', borderRadius: 6, padding: '6px 8px', fontSize: 13, boxSizing: 'border-box' }}
                   />
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -1793,7 +1801,7 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => { setShowAddNode(false); setAddNodeStatus('') }}
-                    style={{ background: '#2a3040', color: '#aeb7c4', border: '1px solid #404652', borderRadius: 6, padding: '6px 10px', fontSize: 13, cursor: 'pointer' }}
+                    style={{ background: '#2a3040', color: '#9a7a82', border: '1px solid #3a2030', borderRadius: 6, padding: '6px 10px', fontSize: 13, cursor: 'pointer' }}
                   >
                     ✕
                   </button>
@@ -1810,7 +1818,7 @@ export default function App() {
             {initialLoad ? (
               <div style={{ textAlign: 'center', padding: '60px 20px' }}>
                 <Spinner />
-                <div style={{ color: '#aeb7c4', marginTop: 16, fontSize: 14 }}>Connecting to your TRIdock node…</div>
+                <div style={{ color: '#9a7a82', marginTop: 16, fontSize: 14 }}>Connecting to your TRIdock node…</div>
               </div>
             ) : panelByTab[activeTab]}
             {summaryError ? <div style={{ marginTop: 16, padding: 12, borderRadius: 8, background: '#23161a', border: '1px solid #6a3943', color: '#ffd7de' }}><strong>RPC note:</strong> {summaryError}</div> : null}
