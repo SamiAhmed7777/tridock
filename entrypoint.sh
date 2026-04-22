@@ -3,7 +3,22 @@
 # Lessons learned: https://github.com/SamiAhmed7777/tridock/blob/master/LESSONS_LEARNED.md
 set -Eeuo pipefail
 
+# ERR trap disabled during init (re-enabled after main setup)
+# Define paths before cleanup uses them
+DATA_DIR="${TRI_DATA_DIR:-/tri/data}"
+CACHE_DIR="${TRI_CACHE_DIR:-/tri/cache}"
+
+set +E
+
 # ═══════════════════════════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Idempotent startup cleanup — remove stale state from previous runs
+# ═══════════════════════════════════════════════════════════════════════════════
+rm -f "$DATA_DIR"/.lock "$DATA_DIR/trianglesd.pid" 2>/dev/null || true
+rm -f "$DATA_DIR/database/LOCK" "$DATA_DIR/txleveldb/LOCK" 2>/dev/null || true
+rm -f "$DATA_DIR/peers.dat" 2>/dev/null || true
+rm -f "$CACHE_DIR"/*.pid "$CACHE_DIR"/*.lock 2>/dev/null || true
 # Configuration
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -239,6 +254,8 @@ cleanup() {
     wait "$TRI_PID" 2>/dev/null || true
   fi
 }
+# Re-enable ERR trap for operational phase
+set -E
 trap cleanup EXIT INT TERM
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -338,7 +355,7 @@ resolve_tri_release_inputs() {
   [ -z "$TRI_RELEASE_FILENAME" ] && TRI_RELEASE_FILENAME="$(basename "$TRI_RELEASE_URL")"
   [ -z "$TRI_BIN_DOWNLOAD_URL" ] && TRI_BIN_DOWNLOAD_URL="$TRI_RELEASE_URL"
 }
-resolve_tri_release_inputs
+resolve_tri_release_inputs || true
 
 verify_sha256() {
   local file="$1" expected="$2"
@@ -1018,7 +1035,7 @@ start_wallet_ui() {
   [ -f "$UI_DATA_DIR/server.mjs" ] || { log "No wallet UI found — skipping"; return; }
   log "Starting wallet web UI on port ${PORT:-4177}..."
   cd "$UI_DATA_DIR"
-  node server.mjs &
+  nodejs server.mjs &
   UI_PID=$!
   log "Wallet web UI started (PID $UI_PID)"
 }
@@ -1076,7 +1093,7 @@ main() {
   run_node &
   local node_pid=$!
   start_wallet_ui
-  wait $node_pid
+  wait $node_pid || true || true
   log "trianglesd exited — container staying alive for appliance access"
   tail -f /dev/null &
   wait $!
