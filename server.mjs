@@ -2,6 +2,7 @@ import express from 'express'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import fs from 'node:fs/promises'
+import fsSync from 'node:fs'
 import crypto from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -1196,6 +1197,52 @@ app.delete('/api/nodes/:index', async (req, res) => {
   await saveNodes()
   res.json({ ok: true })
 })
+
+// ─── Contacts ───────────────────────────────────────────────────────────
+const contactsPath = path.join(dataDir, 'contacts.json')
+function loadContacts() {
+  try {
+    if (!fsSync.existsSync(contactsPath)) return []
+    return JSON.parse(fsSync.readFileSync(contactsPath, 'utf8'))
+  } catch { return [] }
+}
+function saveContacts(contacts) {
+  fsSync.writeFileSync(contactsPath, JSON.stringify(contacts, null, 2))
+}
+
+app.get('/api/contacts', async (req, res) => {
+  const contacts = loadContacts()
+  res.json({ ok: true, contacts })
+})
+
+app.post('/api/contacts', async (req, res) => {
+  const { name, address, label, note } = req.body || {}
+  if (!name || !address) return res.json({ ok: false, message: 'name and address required' })
+  const contacts = loadContacts().filter((c) => c.address !== address)
+  contacts.push({ name, address, label: label || '', note: note || '', createdAt: new Date().toISOString() })
+  saveContacts(contacts)
+  res.json({ ok: true, contacts })
+})
+
+app.put('/api/contacts/:address', async (req, res) => {
+  const addr = decodeURIComponent(req.params.address)
+  const { name, label, note } = req.body || {}
+  const contacts = loadContacts()
+  const idx = contacts.findIndex((c) => c.address === addr)
+  if (idx === -1) return res.json({ ok: false, message: 'contact not found' })
+  contacts[idx] = { ...contacts[idx], name, label: label || '', note: note || '' }
+  saveContacts(contacts)
+  res.json({ ok: true, contacts })
+})
+
+app.delete('/api/contacts/:address', async (req, res) => {
+  const addr = decodeURIComponent(req.params.address)
+  const contacts = loadContacts().filter((c) => c.address !== addr)
+  saveContacts(contacts)
+  res.json({ ok: true, contacts })
+})
+
+
 
 // ─── Static serving ──────────────────────────────────────────────────────────
 

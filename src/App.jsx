@@ -99,6 +99,10 @@ function ActionButton({ children, disabled = false, onClick, tone = 'default' })
   )
 }
 
+function toneForCard(tone) {
+  return ['default', 'accent', 'warning', 'ok'].includes(tone) ? tone : 'default'
+}
+
 function Field({ label, placeholder, disabled = true, value = '', onChange, type = 'text' }) {
   return (
     <div>
@@ -781,7 +785,7 @@ export default function App() {
           ) : null}
           {walletActionStatus ? <div style={{ marginTop: 8, fontSize: 12, color: '#aeb7c4' }}>{walletActionStatus}</div> : null}
         </Card>
-        <Card title="Staking" tone={summary?.staking?.staking ? 'ok' : summary?.staking?.enabled ? 'warning' : 'muted'}>
+        <Card title="Staking" tone={toneForCard(summary?.staking?.staking ? 'ok' : summary?.staking?.enabled ? 'warning' : 'muted')}>
           <div style={{ fontSize: 28, fontWeight: 800 }}>
             {summary?.staking?.staking ? 'Active' : summary?.staking?.enabled ? 'Idle' : 'Off'}
           </div>
@@ -1049,6 +1053,373 @@ export default function App() {
       </Card>
     </div>
   )
+
+
+  // ═══════════════════════════════════════════════════════════════
+  // STAKING PANEL
+  // ═══════════════════════════════════════════════════════════════
+  const stakingPanel = (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+        {['status', 'history', 'info'].map((tab) => (
+          <button key={tab} onClick={() => setStakingPanelTab(tab)}
+            style={{ border: '1px solid #414955', background: stakingPanelTab === tab ? '#2a3140' : '#171a20', color: '#eef2f7', borderRadius: 999, padding: '8px 14px', cursor: 'pointer', fontWeight: 600 }}>
+            {tab === 'status' ? 'Status' : tab === 'history' ? 'History' : 'Info'}
+          </button>
+        ))}
+      </div>
+
+      {stakingPanelTab === 'status' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          <Card title="Staking engine" tone={toneForCard(summary?.staking?.staking ? 'ok' : summary?.staking?.enabled ? 'warning' : 'muted')}>
+            <div style={{ fontSize: 28, fontWeight: 800 }}>
+              {summary?.staking?.staking ? '🟢 Active' : summary?.staking?.enabled ? '🟡 Idle' : '⚪ Off'}
+            </div>
+            <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+              <InfoRow label="Your weight" value={formatAmount(summary?.staking?.weight)} />
+              <InfoRow label="Network weight" value={formatAmount(summary?.staking?.netstakeweight)} />
+              <InfoRow label="Next stake" value={
+                summary?.staking?.expectedtime && Number(summary.staking.expectedtime) > 0
+                  ? `~${Math.round(Number(summary.staking.expectedtime) / 60)} min`
+                  : summary?.staking?.staking ? 'Staking now ✓' : '—'
+              } />
+              <InfoRow label="Errors" value={summary?.staking?.errors ? String(summary.staking.errors).slice(0, 60) : 'none'} />
+            </div>
+            {capabilities?.wallet?.locked !== false && (
+              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'rgba(255,193,7,.1)', border: '1px solid rgba(255,193,7,.3)', color: '#ffd76e', fontSize: 13 }}>
+                Unlock your wallet to stake
+              </div>
+            )}
+          </Card>
+          <Card title="Stake balance">
+            <div style={{ fontSize: 28, fontWeight: 800 }}>{formatAmount(summary?.stake)}</div>
+            <div style={{ color: '#aeb7c4', marginTop: 8, fontSize: 13 }}>Locked in stake</div>
+            <div style={{ marginTop: 12, display: 'grid', gap: 6 }}>
+              <InfoRow label="Total" value={formatAmount(summary?.balance)} />
+              <InfoRow label="New mint" value={formatAmount(summary?.newmint)} />
+              <InfoRow label="Unconfirmed" value={formatAmount(summary?.unconfirmed_balance)} />
+              <InfoRow label="Spendable" value={formatAmount((Number(summary?.balance||0) - Number(summary?.stake||0) - Number(summary?.unconfirmed_balance||0)).toFixed(8))} />
+            </div>
+          </Card>
+          <Card title="Network share" subtitle="Your proportion of staking power">
+            {summary?.staking?.weight && summary?.staking?.netstakeweight ? (
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ fontSize: 28, fontWeight: 800 }}>
+                  {((Number(summary.staking.weight) / Number(summary.staking.netstakeweight) * 100)).toFixed(2)}%
+                </div>
+                <div style={{ color: '#aeb7c4', fontSize: 13 }}>
+                  You earn rewards proportionally to your share of total staked TRI.
+                </div>
+              </div>
+            ) : <div style={{ color: '#aeb7c4' }}>Stake coins to see your network share.</div>}
+          </Card>
+        </div>
+      ) : stakingPanelTab === 'history' ? (
+        <Card title="Stake transaction history">
+          <div style={{ display: 'grid', gap: 8 }}>
+            {(() => {
+              const stakeTxs = (summary?.transactions || []).filter(
+                (tx) => tx.category === 'generate' || tx.category === 'stake'
+              )
+              if (!stakeTxs.length) return <div style={{ color: '#aeb7c4' }}>No stake transactions yet.</div>
+              return stakeTxs.slice(0, 50).map((tx, i) => (
+                <div key={i} style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #343942', background: '#181b20', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>{tx.category || 'reward'}</div>
+                    <div style={{ color: '#aeb7c4', fontSize: 12, marginTop: 4 }}>{formatTime(tx.time)}</div>
+                    {tx.txid ? <div style={{ color: '#8aa2c8', fontSize: 11, fontFamily: 'monospace', marginTop: 2 }}>{formatHash(tx.txid)}</div> : null}
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 700, color: '#8df0b1' }}>+{formatAmount(tx.amount)}</div>
+                    <div style={{ color: '#aeb7c4', fontSize: 12, marginTop: 4 }}>{tx.confirmations ?? 0} conf</div>
+                  </div>
+                </div>
+              ))
+            })()}
+          </div>
+        </Card>
+      ) : (
+        <Card title="How staking works">
+          <div style={{ display: 'grid', gap: 12 }}>
+            <InfoRow label="Type" value="Proof of Stake (PoS)" />
+            <InfoRow label="Yield" value="~2-5% annually" />
+            <InfoRow label="Frequency" value="Every PoS block (~1-5 min)" />
+            <InfoRow label="Minimum" value="No minimum" />
+            <InfoRow label="Lock-up" value="While staking" />
+            <div style={{ padding: '10px 12px', borderRadius: 8, background: '#181b20', border: '1px solid #343942', color: '#aeb7c4', fontSize: 13, lineHeight: 1.6 }}>
+              Keep your wallet unlocked and node online to earn rewards. Older UTXOs earn priority.
+            </div>
+          </div>
+        </Card>
+      )}
+    </div>
+  )
+
+  // ═══════════════════════════════════════════════════════════════
+  // CONTACTS PANEL — Full CRUD address book
+  // ═══════════════════════════════════════════════════════════════
+  function ContactRow({ contact, onEdit, onDelete, onSend }) {
+    return (
+      <div style={{ padding: 14, borderRadius: 12, border: '1px solid #343942', background: '#181b20' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>{contact.name}</div>
+            {contact.label ? <div style={{ color: '#8aa2c8', fontSize: 12, marginTop: 2 }}>{contact.label}</div> : null}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <button onClick={() => onSend(contact)} style={{ background: '#1a2330', color: '#8df0b1', border: '1px solid #3b7a56', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Send</button>
+            <button onClick={() => onEdit(contact)} style={{ background: '#202a38', color: '#ecf2ff', border: '1px solid #53698a', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>Edit</button>
+            <button onClick={() => onDelete(contact.address)} style={{ background: '#1a1416', color: '#ff7d7d', border: '1px solid #8b4b57', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>Delete</button>
+          </div>
+        </div>
+        <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', color: '#8aa2c8', fontSize: 12 }}>{contact.address}</div>
+        {contact.note ? <div style={{ marginTop: 8, color: '#aeb7c4', fontSize: 13, fontStyle: 'italic' }}>{contact.note}</div> : null}
+      </div>
+    )
+  }
+
+  const contactsPanel = (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr .9fr', gap: 16 }}>
+      <Card title="Contacts" subtitle="Your saved Triangles addresses">
+        <div style={{ display: 'grid', gap: 10 }}>
+          {contactsLoading ? (
+            <div style={{ color: '#aeb7c4' }}>Loading…</div>
+          ) : contacts.length === 0 ? (
+            <div style={{ color: '#aeb7c4', textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📇</div>
+              No contacts yet. Add your first one!
+            </div>
+          ) : contacts.map((c) => (
+            <ContactRow
+              key={c.address}
+              contact={c}
+              onEdit={(contact) => {
+                setEditingContact(contact)
+                setContactForm({ name: contact.name, address: contact.address, label: contact.label || '', note: contact.note || '' })
+              }}
+              onDelete={async (address) => {
+                if (!confirm(`Delete this contact?`)) return
+                setContactsLoading(true)
+                try {
+                  const res = await fetch(`/api/contacts/${encodeURIComponent(address)}`, { method: 'DELETE' })
+                  const data = await res.json()
+                  if (data.ok) {
+                    setContacts((prev) => prev.filter((c2) => c2.address !== address))
+                    setContactsStatus('Deleted.')
+                  } else {
+                    setContactsStatus(`Error: ${data.message}`)
+                  }
+                } catch (e) {
+                  setContactsStatus(`Error: ${e.message}`)
+                } finally {
+                  setContactsLoading(false)
+                }
+              }}
+              onSend={(contact) => {
+                setSendForm((f) => ({ ...f, address: contact.address }))
+                setActiveTab('send')
+              }}
+            />
+          ))}
+        </div>
+        {contactsStatus ? <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#181b20', border: '1px solid #343942', color: '#cdd6e2', fontSize: 13 }}>{contactsStatus}</div> : null}
+      </Card>
+
+      <Card title={editingContact ? 'Edit contact' : 'Add contact'} subtitle="Save frequently used addresses">
+        <div style={{ display: 'grid', gap: 12 }}>
+          <Field label="Friendly name" value={contactForm.name} onChange={(e) => setContactForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Sami's savings" />
+          <Field label="TRI address" value={contactForm.address} onChange={(e) => setContactForm((f) => ({ ...f, address: e.target.value }))} placeholder="Tj… or onion address" />
+          <Field label="Category" value={contactForm.label} onChange={(e) => setContactForm((f) => ({ ...f, label: e.target.value }))} placeholder="e.g. savings, exchange, family" />
+          <div>
+            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Private note (never sent)</div>
+            <textarea value={contactForm.note} onChange={(e) => setContactForm((f) => ({ ...f, note: e.target.value }))}
+              placeholder="Private reminder about this contact…"
+              rows={3}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#eef2f7', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <ActionButton
+              tone="ok"
+              disabled={!contactForm.name || !contactForm.address}
+              onClick={async () => {
+                setContactsLoading(true)
+                setContactsStatus('')
+                try {
+                  const method = editingContact ? 'PUT' : 'POST'
+                  const url = editingContact
+                    ? `/api/contacts/${encodeURIComponent(editingContact.address)}`
+                    : '/api/contacts'
+                  const res = await fetch(url, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(contactForm),
+                  })
+                  const data = await res.json()
+                  if (data.ok) {
+                    if (editingContact) {
+                      setContacts((prev) => prev.map((c) => c.address === editingContact.address ? { ...c, ...contactForm } : c))
+                    } else {
+                      setContacts((prev) => [...prev.filter((c) => c.address !== contactForm.address), contactForm])
+                    }
+                    setContactForm({ name: '', address: '', label: '', note: '' })
+                    setEditingContact(null)
+                    setContactsStatus(editingContact ? 'Contact updated.' : 'Contact added.')
+                  } else {
+                    setContactsStatus(`Error: ${data.message}`)
+                  }
+                } catch (e) {
+                  setContactsStatus(`Error: ${e.message}`)
+                } finally {
+                  setContactsLoading(false)
+                }
+              }}>
+              {editingContact ? 'Save changes' : 'Add contact'}
+            </ActionButton>
+            {editingContact && (
+              <ActionButton onClick={() => { setEditingContact(null); setContactForm({ name: '', address: '', label: '', note: '' }) }}>Cancel</ActionButton>
+            )}
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+
+  // ═══════════════════════════════════════════════════════════════
+  // SETTINGS PANEL
+  // ═══════════════════════════════════════════════════════════════
+  const settingsPanel = (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <Card title="Display">
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div>
+            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Currency display</div>
+            <select value={settings.currency} onChange={(e) => setSettings((s) => ({ ...s, currency: e.target.value }))}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#eef2f7' }}>
+              <option value="TRI">TRI</option>
+              <option value="mTRI">mTRI (milli-TRI)</option>
+              <option value="sat">satoshis</option>
+            </select>
+          </div>
+          <div>
+            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Auto-lock wallet</div>
+            <select value={settings.autoLockMinutes} onChange={(e) => setSettings((s) => ({ ...s, autoLockMinutes: Number(e.target.value) }))}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#eef2f7' }}>
+              {[5, 15, 30, 60, 120, 0].map((m) => <option key={m} value={m}>{m === 0 ? 'Never' : `${m} minutes`}</option>)}
+            </select>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <input type="checkbox" checked={settings.showBalances} onChange={(e) => setSettings((s) => ({ ...s, showBalances: e.target.checked }))} />
+            <span style={{ color: '#eef2f7' }}>Show balance amounts</span>
+          </label>
+        </div>
+      </Card>
+
+      <Card title="Node">
+        <div style={{ display: 'grid', gap: 12 }}>
+          <InfoRow label="Active node" value={nodes.find((n) => n.active)?.name || '—'} />
+          <InfoRow label="Block height" value={summary?.blocks || nodeState?.localHeight || '—'} />
+          <InfoRow label="Connections" value={summary?.connections || '—'} />
+          <div>
+            <div style={{ color: '#aeb7c4', marginBottom: 6 }}>Onion RPC (Tor)</div>
+            <input value={settings.onionRpc} onChange={(e) => setSettings((s) => ({ ...s, onionRpc: e.target.value }))}
+              placeholder="http://your-onion:19112"
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #343942', background: '#111419', color: '#eef2f7', boxSizing: 'border-box' }} />
+          </div>
+          <ActionButton tone="ok" disabled={!settings.onionRpc}
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/nodes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name: `Onion RPC`, url: settings.onionRpc, user: '', password: '' }) })
+                const data = await res.json()
+                setSettingsSaved(data.ok ? 'Onion node added.' : `Error: ${data.message}`)
+              } catch (e) { setSettingsSaved(`Error: ${e.message}`) }
+            }}>
+            Add onion RPC node
+          </ActionButton>
+        </div>
+      </Card>
+
+      <Card title="Security">
+        <div style={{ display: 'grid', gap: 12 }}>
+          <InfoRow label="Encrypted" value={capabilities?.wallet?.encrypted ? 'yes' : 'no / unknown'} />
+          <InfoRow label="Locked" value={capabilities?.wallet?.locked ? 'yes' : 'no'} />
+          <InfoRow label="Auto-lock" value={settings.autoLockMinutes === 0 ? 'Never' : `${settings.autoLockMinutes} min`} />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {capabilities?.wallet?.locked !== false ? (
+              <ActionButton tone="ok" onClick={() => handleUnlockWallet()}>Unlock wallet</ActionButton>
+            ) : (
+              <ActionButton onClick={() => handleLockWallet()}>Lock wallet</ActionButton>
+            )}
+          </div>
+          {walletActionStatus ? <div style={{ color: '#aeb7c4', fontSize: 13 }}>{walletActionStatus}</div> : null}
+        </div>
+      </Card>
+
+      <Card title="About">
+        <div style={{ display: 'grid', gap: 8 }}>
+          <InfoRow label="TRIdock" value="v1.0" />
+          <InfoRow label="TRI daemon" value={summary?.version || '—'} />
+          <InfoRow label="Protocol" value="TRI v5.8.x" />
+          <div style={{ padding: '10px 12px', borderRadius: 8, background: '#181b20', border: '1px solid #343942', color: '#aeb7c4', fontSize: 12, lineHeight: 1.6 }}>
+            Triangles — hybrid PoW/PoS blockchain with secure messaging, staking, and onion routing. Keys stay on your node.
+          </div>
+        </div>
+      </Card>
+
+      {settingsSaved ? <div style={{ gridColumn: '1 / -1', padding: 10, borderRadius: 8, background: '#181b20', border: '1px solid #343942', color: '#8df0b1' }}>{settingsSaved}</div> : null}
+    </div>
+  )
+
+  // ═══════════════════════════════════════════════════════════════
+  // SEND CONFIRMATION OVERLAY
+  // ═══════════════════════════════════════════════════════════════
+  const sendConfirmOverlay = sendConfirm ? (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: '#171a20', border: '1px solid #c1172f', borderRadius: 16, padding: 28, maxWidth: 520, width: '100%', boxShadow: '0 0 60px rgba(193,23,47,.4)' }}>
+        <h2 style={{ marginTop: 0, color: '#ffd7de', fontFamily: 'Segoe UI, sans-serif', fontSize: 20 }}>⚠️ Confirm send</h2>
+        <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
+          <div style={{ padding: '12px 14px', borderRadius: 10, background: '#111419', border: '1px solid #343942' }}>
+            <div style={{ color: '#aeb7c4', fontSize: 12, marginBottom: 4 }}>To address</div>
+            <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', color: '#eef2f7', fontSize: 13 }}>{sendConfirm.address}</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ padding: '12px 14px', borderRadius: 10, background: '#111419', border: '1px solid #343942' }}>
+              <div style={{ color: '#aeb7c4', fontSize: 12 }}>Amount</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#eef2f7' }}>{sendConfirm.amount} TRI</div>
+            </div>
+            <div style={{ padding: '12px 14px', borderRadius: 10, background: '#111419', border: '1px solid #343942' }}>
+              <div style={{ color: '#aeb7c4', fontSize: 12 }}>Fee</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: '#cdd6e2' }}>{formatAmount(sendConfirm.fee)}</div>
+            </div>
+          </div>
+          <div style={{ padding: '12px 14px', borderRadius: 10, background: '#111419', border: '1px solid #343942' }}>
+            <div style={{ color: '#aeb7c4', fontSize: 12 }}>Total (amount + fee)</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#ffd7de' }}>{formatAmount(sendConfirm.total)} TRI</div>
+          </div>
+          {sendConfirm.memo ? (
+            <div style={{ padding: '10px 12px', borderRadius: 8, background: '#181b20', border: '1px solid #343942', color: '#aeb7c4', fontSize: 13 }}>
+              Memo: {sendConfirm.memo}
+            </div>
+          ) : null}
+          <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(193,23,47,.1)', border: '1px solid rgba(193,23,47,.3)', color: '#ffb3b3', fontSize: 13 }}>
+            ⚠️ This transaction is irreversible. Verify the address carefully.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 20, flexWrap: 'wrap' }}>
+          <ActionButton tone="ok"
+            onClick={async () => {
+              setSendConfirm(null)
+              await handleBroadcastSend()
+            }}>
+            ✅ Yes, broadcast send
+          </ActionButton>
+          <ActionButton onClick={() => setSendConfirm(null)}>Cancel</ActionButton>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+
 
   const debugPanel = (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
