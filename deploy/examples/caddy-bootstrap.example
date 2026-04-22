@@ -1,0 +1,71 @@
+# Caddy Config — Bootstrap Server
+# =============================================================================
+# Serves TRI blockchain bootstrap tarballs over HTTPS, HTTP, and Tor onion.
+#
+# HOW TO USE:
+#   1. Copy to your Caddy sites directory (e.g. /etc/caddy/sites/)
+#   2. Replace «CHANGEME» values
+#   3. Create the webroot: mkdir -p /var/www/triangles-bootstrap
+#   4. Place bootstrap tarball there
+#   5. Reload Caddy: systemctl reload caddy
+#
+# PREREQUISITES:
+#   - Caddy installed (https://caddyserver.com)
+#   - DNS A record pointing your domain to this server
+#   - Port 80+443 open in firewall
+#   - Bootstrap tarball in /var/www/triangles-bootstrap/
+# =============================================================================
+
+# ─── HTTPS (auto-TLS via Let's Encrypt) ───
+# This block handles HTTPS automatically. Caddy gets certs for you.
+# «CHANGEME» replace with your domain:
+bootstrap.«YOUR_DOMAIN».org {
+    root * /var/www/triangles-bootstrap
+    file_server {
+        precompressed gzip zstd
+    }
+    encode gzip
+    header {
+        Access-Control-Allow-Origin *
+        Cache-Control "public, max-age=3600"
+    }
+    log {
+        output file /var/log/caddy/bootstrap.log
+    }
+}
+
+# ─── HTTP fallback ───
+# Serves same content over plain HTTP for clients without TLS support.
+bootstrap.«YOUR_DOMAIN».org:80 {
+    root * /var/www/triangles-bootstrap
+    file_server {
+        precompressed gzip zstd
+    }
+    encode gzip
+    header {
+        Access-Control-Allow-Origin *
+        Cache-Control "public, max-age=3600"
+    }
+    log {
+        output file /var/log/caddy/bootstrap.log
+    }
+}
+
+# ─── Tor onion service ───
+# Serves bootstrap over your .onion address.
+# Only works if Tor is running with a hidden service pointing here.
+# «CHANGEME» replace with your actual .onion address:
+http://«YOUR_ONION_ADDRESS».onion:80 {
+    root * /var/www/triangles-bootstrap
+    file_server {
+        precompressed gzip zstd
+    }
+    encode gzip
+    header {
+        Access-Control-Allow-Origin *
+        Cache-Control "public, max-age=3600"
+    }
+    log {
+        output file /var/log/caddy/bootstrap.log
+    }
+}

@@ -1,0 +1,150 @@
+# TRIdock Seed Node Deployment
+# =============================================================================
+# Deploy 4 seed nodes behind Tor with automatic bootstrapping.
+#
+# HOW TO USE:
+#   1. Copy this file: cp docker-compose.seed.yml docker-compose.yml
+#   2. Fill in YOUR values where you see «CHANGEME» markers
+#   3. Create data directories: mkdir -p data/seed-{1,2,3,4}
+#   4. Start: docker compose up -d
+#   5. Check logs: docker logs -f tri-seed-1
+#
+# WHAT EACH SEED DOES:
+#   - Downloads blockchain bootstrap automatically on first start
+#   - Connects to trusted peers over Tor
+#   - Gets its own .onion address for incoming connections
+#   - Exposes wallet web UI on port 4177 (seed-1 only)
+#   - Auto-restarts on failure
+# =============================================================================
+
+services:
+  # ─── Seed 1 ─── (web UI enabled on port 4177)
+  tri-seed-1:
+    image: samiahmed7777/tridock:latest
+    container_name: tri-seed-1
+    restart: unless-stopped
+    ports:
+      - "24112:24112/tcp"    # P2P port (host:container)
+      - "24112:24112/udp"
+      - "4177:4177/tcp"      # Web wallet UI (seed-1 only)
+    environment:
+      # ── Identity ──
+      TRI_MODE: seed
+      TRI_NODE_NAME: tri-seed-1              # «CHANGEME» unique name per seed
+      TRI_INSTANCE_ID: tri-seed-1            # «CHANGEME» must match NODE_NAME
+      TRI_WALLET_ID: ""                      # leave empty for seed-only nodes
+      TRI_ROLE: seed
+
+      # ── Version ──
+      TRI_VERSION: "5.8.5"                   # pinned TRI version
+
+      # ── Tor ──
+      TRI_TOR_ENABLED: "1"                   # 1 = Tor on, 0 = clearnet only
+
+      # ── Bootstrap (auto-downloads blockchain on fresh start) ──
+      TRI_BOOTSTRAP_ENABLED: "1"             # 1 = auto-bootstrap on empty data
+      TRI_PREFER_BOOTSTRAP: "1"              # prefer bootstrap over IBD from peers
+      # Comma-separated URLs, tried in order:
+      TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/triangles-bootstrap.tar.gz,https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
+      TRI_BOOTSTRAP_TIMEOUT: "300"           # seconds — 1.2GB needs ~5 min
+
+      # ── Binary download ──
+      TRI_RELEASE_BASE_URL: "https://github.com/SamiAhmed7777/triangles_v5/releases/download"
+
+      # ── RPC (local inside container) ──
+      # «CHANGEME» set your own RPC credentials:
+      TRI_RPCUSER: triseed
+      TRI_RPCPASSWORD: «YOUR_RPC_PASSWORD»
+      TRI_RPCPORT: "19112"
+      TRI_PORT: "24112"                      # P2P port inside container
+      TRI_RPC_URL: "http://127.0.0.1:19112"
+
+      # ── Seed mode ──
+      TRI_SEED_MODE: "1"                     # enables seed behavior
+      TRI_SEED_ISOLATION: "1"                # removes stale peers, uses trusted only
+      # «CHANGEME» comma-separated trusted peer onion addresses:
+      TRI_SEED_TRUSTED_PEERS: "«YOUR_PEER1».onion:24112,«YOUR_PEER2».onion:24112"
+
+      # ── Canonical verification (optional) ──
+      TRI_CANONICAL_RPC_URL: ""              # set to a trusted node's RPC to verify chain
+      TRI_CANONICAL_VERIFY_INTERVAL: "0"     # seconds between checks (0 = disabled)
+
+      # ── Safety: all write ops disabled for seeds ──
+      TRI_STAKE_ENABLED: "0"
+      TRI_ENABLE_WRITE_OPS: "0"
+      TRI_ALLOW_SEND_BROADCAST: "0"
+      TRI_ALLOW_WALLET_UNLOCK: "0"
+      TRI_ALLOW_RESEED: "0"
+      TRI_ALLOW_BACKUP_EXPORT: "0"
+
+    volumes:
+      - ./data/seed-1:/tri/data              # blockchain, wallet, config
+      - tri_seed_bootstrap:/tri/bootstrap    # bootstrap download cache
+      - tri_seed_cache:/tri/cache
+      - tri_seed_state:/tri/state            # runtime state files
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: "10m"
+
+  # ─── Seed 2 ─── (no web UI, different host P2P port)
+  tri-seed-2:
+    image: samiahmed7777/tridock:latest
+    container_name: tri-seed-2
+    restart: unless-stopped
+    ports:
+      - "24113:24112/tcp"                    # «CHANGEME» increment host port per seed
+      - "24113:24112/udp"
+    environment:
+      TRI_MODE: seed
+      TRI_NODE_NAME: tri-seed-2              # «CHANGEME»
+      TRI_INSTANCE_ID: tri-seed-2            # «CHANGEME»
+      TRI_WALLET_ID: ""
+      TRI_ROLE: seed
+      TRI_VERSION: "5.8.5"
+      TRI_TOR_ENABLED: "1"
+      TRI_BOOTSTRAP_ENABLED: "1"
+      TRI_PREFER_BOOTSTRAP: "1"
+      TRI_BOOTSTRAP_URLS: "https://bootstrap.cryptographic-triangles.org/triangles-bootstrap.tar.gz,https://bootstrap.cryptographic-triangles.org/tri-bootstrap.tar.gz"
+      TRI_BOOTSTRAP_TIMEOUT: "300"
+      TRI_RELEASE_BASE_URL: "https://github.com/SamiAhmed7777/triangles_v5/releases/download"
+      TRI_RPCUSER: triseed
+      TRI_RPCPASSWORD: «YOUR_RPC_PASSWORD»
+      TRI_RPCPORT: "19112"
+      TRI_PORT: "24112"
+      TRI_RPC_URL: "http://127.0.0.1:19112"
+      TRI_SEED_MODE: "1"
+      TRI_SEED_ISOLATION: "1"
+      TRI_SEED_TRUSTED_PEERS: "«YOUR_PEER1».onion:24112,«YOUR_PEER2».onion:24112"
+      TRI_CANONICAL_RPC_URL: ""
+      TRI_CANONICAL_VERIFY_INTERVAL: "0"
+      TRI_STAKE_ENABLED: "0"
+      TRI_ENABLE_WRITE_OPS: "0"
+      TRI_ALLOW_SEND_BROADCAST: "0"
+      TRI_ALLOW_WALLET_UNLOCK: "0"
+      TRI_ALLOW_RESEED: "0"
+      TRI_ALLOW_BACKUP_EXPORT: "0"
+    volumes:
+      - ./data/seed-2:/tri/data
+      - tri_seed_bootstrap2:/tri/bootstrap
+      - tri_seed_cache2:/tri/cache
+      - tri_seed_state2:/tri/state
+    logging:
+      driver: json-file
+      options:
+        max-file: "3"
+        max-size: "10m"
+
+  # ─── Seed 3 & 4 ── same pattern, increment ports and names ──
+  # Copy seed-2 block and change: container_name, host ports, NODE_NAME, 
+  # INSTANCE_ID, volume paths (seed-3/4, bootstrap3/4, etc.)
+  # See the full 4-seed compose in deploy/examples/docker-compose.4seed-full.yml
+
+volumes:
+  tri_seed_bootstrap:
+  tri_seed_cache:
+  tri_seed_state:
+  tri_seed_bootstrap2:
+  tri_seed_cache2:
+  tri_seed_state2:
