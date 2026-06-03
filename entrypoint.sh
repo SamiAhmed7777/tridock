@@ -77,6 +77,7 @@ PREFER_BOOTSTRAP="${TRI_PREFER_BOOTSTRAP:-1}"
 BOOTSTRAP_TIMEOUT="${TRI_BOOTSTRAP_TIMEOUT:-30}"
 BOOTSTRAP_MIN_BLOCK_BYTES="${TRI_BOOTSTRAP_MIN_BLOCK_BYTES:-100000000}"
 BOOTSTRAP_MIN_LDB_COUNT="${TRI_BOOTSTRAP_MIN_LDB_COUNT:-300}"
+BOOTSTRAP_MANIFEST_REQUIRED="${TRI_BOOTSTRAP_MANIFEST_REQUIRED:-0}"
 BOOTSTRAP_ACTIVE=0
 
 # Tor
@@ -669,8 +670,9 @@ chain_present() {
 
 chain_looks_sane() {
   chain_present || return 1
-  local blk_size
+  local blk_size manifest_path ldb_count
   blk_size=$(stat -c%s "$DATA_DIR/blk0001.dat" 2>/dev/null || echo 0)
+  manifest_path="$DATA_DIR/snapshot.manifest"
 
   if [ "$NODE_TYPE" = "spv" ]; then
     [ "$blk_size" -ge 1048576 ] || return 1
@@ -678,8 +680,18 @@ chain_looks_sane() {
   fi
 
   [ "$blk_size" -ge "$BOOTSTRAP_MIN_BLOCK_BYTES" ] || return 1
+
+  if [ -f "$manifest_path" ]; then
+    log "Bootstrap manifest detected: $(tr '\n' ' ' < "$manifest_path" 2>/dev/null | cut -c1-180)"
+    return 0
+  fi
+
+  if [ "$BOOTSTRAP_MANIFEST_REQUIRED" = "1" ]; then
+    warn "Bootstrap manifest required but snapshot.manifest missing"
+    return 1
+  fi
+
   if [ -d "$DATA_DIR/txleveldb" ]; then
-    local ldb_count
     ldb_count=$(find "$DATA_DIR/txleveldb" -name '*.ldb' 2>/dev/null | wc -l)
     [ "$ldb_count" -ge "$BOOTSTRAP_MIN_LDB_COUNT" ] || return 1
   else
