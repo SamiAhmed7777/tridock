@@ -127,7 +127,7 @@ Add multiple TRI nodes and switch between them from the header dropdown. Each no
 | `TRI_RPCPORT` | `19112` | RPC listen port |
 | `TRI_PORT` | `24112` | P2P listen port |
 | `TRI_TOR_ENABLED` | `1` | Enable Tor hidden service |
-| `TRI_VERSION` | `5.7.7` | TRI daemon version to download |
+| `TRI_VERSION` | `5.9.11` | TRI daemon version to download |
 | `TRI_STAKE_ENABLED` | `0` | Enable staking |
 | `TRI_BOOTSTRAP_ENABLED` | `1` | Auto-bootstrap on empty chain |
 | `TRI_BOOTSTRAP_URLS` | *(built-in list)* | Comma-separated bootstrap URLs |

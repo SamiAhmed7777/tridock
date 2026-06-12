@@ -15,7 +15,7 @@ services:
       TRI_INSTANCE_ID: tridock-seed
       TRI_WALLET_ID: ""
       TRI_ROLE: seed
-      TRI_VERSION: "5.7.6"
+      TRI_VERSION: "5.9.11"
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
       TRI_PREFER_BOOTSTRAP: "1"

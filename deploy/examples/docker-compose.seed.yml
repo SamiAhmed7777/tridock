@@ -36,7 +36,7 @@ services:
       TRI_ROLE: seed
 
       # ── Version ──
-      TRI_VERSION: "5.8.5"                   # pinned TRI version
+      TRI_VERSION: "5.9.11"                  # pinned TRI version
 
       # ── Tor ──
       TRI_TOR_ENABLED: "1"                   # 1 = Tor on, 0 = clearnet only
@@ -102,7 +102,7 @@ services:
       TRI_INSTANCE_ID: tri-seed-2            # «CHANGEME»
       TRI_WALLET_ID: ""
       TRI_ROLE: seed
-      TRI_VERSION: "5.8.5"
+      TRI_VERSION: "5.9.11"
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
       TRI_PREFER_BOOTSTRAP: "1"

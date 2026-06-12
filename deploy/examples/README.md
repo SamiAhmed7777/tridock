@@ -26,7 +26,7 @@
 #   TRI_MODE                seed | wallet | full        — node mode
 #   TRI_NODE_NAME           unique name per instance
 #   TRI_INSTANCE_ID         must match NODE_NAME
-#   TRI_VERSION             pinned TRI version (e.g. "5.8.5")
+#   TRI_VERSION             pinned TRI version (e.g. "5.9.11")
 #   TRI_TOR_ENABLED         1 = Tor, 0 = clearnet
 #   TRI_BOOTSTRAP_ENABLED   1 = auto-download chain on fresh start
 #   TRI_BOOTSTRAP_URLS      comma-separated bootstrap URLs (tried in order)

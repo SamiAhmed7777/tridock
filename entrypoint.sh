@@ -52,7 +52,7 @@ TRI_ADMIN_ACTION="${TRI_ADMIN_ACTION:-}"
 
 # Binary management
 TRI_BIN="${TRI_BIN:-$BIN_DIR/trianglesd}"
-TRI_VERSION="${TRI_VERSION:-5.7.7}"
+TRI_VERSION="${TRI_VERSION:-5.9.11}"
 TRI_RELEASE_BASE_URL="${TRI_RELEASE_BASE_URL:-https://github.com/SamiAhmed7777/triangles_v5/releases/download}"
 TRI_RELEASE_FILENAME="${TRI_RELEASE_FILENAME:-}"
 TRI_RELEASE_URL="${TRI_RELEASE_URL:-}"
@@ -547,10 +547,12 @@ onlynet=tor
 dnsseed=0
 addnode=gxvrhv3qitnc6kobrhsrse46bmcfitnybapor3or3oczzuxn6hfzxyid.onion
 addnode=jbpfhe7zw3qm67wy3j2ayysp3mnrjobopthnko3b3sgahqtecblwqmid.onion
-addnode=dyamrxgdsq7vids5vpetlfvpga6u54ihgpava5saz5rz2l6fp4sltqyd.onion
-addnode=eceyvvunnjx52axziol54mmiqv7nhzpxguzwkpygdh2ip6fpzc3yrjid.onion
-addnode=vkwykhwsfxsy33ipnmcj4cnll3i5uhbphpec2dutm5tm6j6kczcubiyd.onion
-addnode=uj3xgtr2knr3he2va6v2kj3ingdbghce44kw5pfopjhrto46n3h2yvqd.onion
+addnode=i6tk7soznftvoibtskwlezviskiererhjndpsmrff4kaxw7jnd5izfqd.onion
+addnode=nawqqoazk2hhaglygulpeg6kh7hsgnvi2fursdvpvkantu4ojj26taid.onion
+addnode=vmepp7plxngv4qpyngbgtb6njwnmlwy4api64xnwkhaf6fm3qlqtpfad.onion
+addnode=nsldmfujkiwsfha42ajp5zx7gz3ekwdk4nvowdpf56mayuxnzshuykqd.onion
+addnode=on4noksywc7b6cdbbxsp535l7j4cugunvlyz3iyhf6sfcg2qzaoy3eqd.onion
+addnode=3uyzltm5cy7xzunncp3d7ariw75erabdnj4l3cxwvsxb6h4orc7eiqad.onion
 CFG
   fi
 
