@@ -38,6 +38,7 @@ const unlockTimeoutSeconds = Number(process.env.TRI_WALLET_UNLOCK_TIMEOUT || '18
 const triMode = process.env.TRI_MODE || 'full'
 const isLightMode = triMode === 'light'
 const allowSmsg = process.env.TRI_ALLOW_SMSG !== '0'
+const enableMeshRelay = process.env.TRI_ENABLE_MESH_RELAY === '1'
 
 // Multi-node support
 const nodesFile = path.join(dataDir, 'nodes.json')
@@ -100,6 +101,9 @@ const readAllowedMethods = new Set([
   'getwalletstatus',
   'validateaddress',
 ])
+
+const relayAllowedMethods = new Set(['sendrawtransaction'])
+const RELAY_HEX_MAX_BYTES = 100_000
 
 async function ensureDataDirs() {
   await fs.mkdir(dataDir, { recursive: true })
@@ -992,6 +996,48 @@ app.post('/api/rpc', async (req, res) => {
     res.json({ result })
   } catch (error) {
     res.status(500).json({ error: error.message })
+  }
+})
+
+// ─── Mesh relay (Shape B: pure transport, no server-side wallet) ─────────────
+// Gated by TRI_ENABLE_MESH_RELAY. Accepts pre-signed payloads from off-network
+// transports (e.g. Meshtastic LoRa) and forwards them to the daemon as-is.
+
+app.post('/api/relay/sendrawtransaction', async (req, res) => {
+  if (!enableMeshRelay) return res.status(403).json({ error: 'Mesh relay disabled' })
+
+  const { hex } = req.body || {}
+  if (typeof hex !== 'string' || hex.length === 0) {
+    return res.status(400).json({ error: 'hex (string) required' })
+  }
+  if (hex.length > RELAY_HEX_MAX_BYTES) {
+    return res.status(413).json({ error: `hex exceeds ${RELAY_HEX_MAX_BYTES} byte limit` })
+  }
+  if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length % 2 !== 0) {
+    return res.status(400).json({ error: 'hex must be even-length hexadecimal' })
+  }
+
+  // Safety gate: match the gate /api/wallet/send/broadcast uses — refuse to relay
+  // if the daemon is still bootstrapping or on a fork. Prevents broadcasting a
+  // signed tx only to peers on the wrong chain (which could lose funds).
+  // Light mode skips this: there's no local daemon to check, remote does its own.
+  if (!isLightMode) {
+    const nodeState = await readNodeState()
+    const status = String(nodeState?.status || '').toLowerCase()
+    if (['bootstrapping', 'bootstrap', 'reseed'].includes(status)) {
+      return res.status(409).json({ ok: false, code: 'NODE_NOT_READY', error: `node status: ${status}`, nodeState })
+    }
+    if (String(nodeState?.canonicalStatus || '').toLowerCase().includes('mismatch')) {
+      return res.status(409).json({ ok: false, code: 'CANONICAL_MISMATCH', error: 'local chain does not match canonical', nodeState })
+    }
+  }
+
+  const node = getActiveNode()
+  try {
+    const txid = await rpcCall(node.url, node.user, node.password, 'sendrawtransaction', [hex])
+    res.json({ ok: true, txid })
+  } catch (error) {
+    res.status(502).json({ ok: false, error: error.message })
   }
 })
 
