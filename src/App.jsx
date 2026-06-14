@@ -2,6 +2,7 @@ import React, { Component, useEffect, useMemo, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import triLogo from './assets/triangles-wordmark.png'
 import triIcon from './assets/triangles.png'
+import { newMnemonic, isValidMnemonic, deriveAccounts } from './lib/triWallet.js'
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -197,6 +198,7 @@ function NavTabs({ active, onChange, badges = {} }) {
     ['addresses', 'Address Book'],
     ['settings', 'Settings'],
     ['relay', 'Mesh Relay'],
+    ['seed', 'Seed Wallet'],
     ['backup', 'Backup'],
     ['debug', 'Debug'],
   ]
@@ -350,6 +352,17 @@ export default function App() {
   const [relayHex, setRelayHex] = useState('')
   const [relayStatus, setRelayStatus] = useState(null)
   const [relayBusy, setRelayBusy] = useState(false)
+
+  // Seed-phrase (HD) wallet
+  const [seedMode, setSeedMode] = useState('generate') // 'generate' | 'restore'
+  const [seedWords, setSeedWords] = useState(24)
+  const [seedMnemonic, setSeedMnemonic] = useState('')
+  const [seedRevealed, setSeedRevealed] = useState(false)
+  const [seedSavedConfirmed, setSeedSavedConfirmed] = useState(false)
+  const [seedRestoreInput, setSeedRestoreInput] = useState('')
+  const [seedAccounts, setSeedAccounts] = useState([])
+  const [seedError, setSeedError] = useState('')
+  const [seedImportStatus, setSeedImportStatus] = useState(null)
 
   // Loading state
   const [initialLoad, setInitialLoad] = useState(true)
@@ -1747,6 +1760,112 @@ export default function App() {
     </div>
   )
 
+  // ═══════════════════════════════════════════════════════════════
+  // SEED-PHRASE (HD) WALLET PANEL
+  // ═══════════════════════════════════════════════════════════════
+  const seedWalletPanel = (
+    <div style={{ display: 'grid', gap: 16, maxWidth: 820 }}>
+      <Card title="Seed phrase wallet (recovery words)">
+        <div style={{ color: '#9a7a82', fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+          Create or restore a wallet from a recovery phrase. The phrase is generated and kept here in
+          your browser — it is never sent anywhere. Anyone with these words controls the coins, so write
+          them down and store them offline. This is separate from your existing wallet.dat.
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          {['generate', 'restore'].map((m) => (
+            <button key={m} onClick={() => { setSeedMode(m); setSeedAccounts([]); setSeedError(''); setSeedImportStatus(null) }}
+              style={{ border: '1px solid #3a2530', background: seedMode === m ? '#2a1820' : '#120d10', color: '#f4e8ec', borderRadius: 999, padding: '8px 16px', cursor: 'pointer', fontWeight: 600 }}>
+              {m === 'generate' ? 'Create new' : 'Restore'}
+            </button>
+          ))}
+        </div>
+
+        {seedMode === 'generate' ? (
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ color: '#9a7a82' }}>Length:</span>
+              {[24, 12].map((w) => (
+                <button key={w} onClick={() => setSeedWords(w)}
+                  style={{ border: '1px solid #3a2530', background: seedWords === w ? '#2a1820' : '#120d10', color: '#f4e8ec', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
+                  {w} words
+                </button>
+              ))}
+              <ActionButton tone="ok" onClick={() => { setSeedMnemonic(newMnemonic(seedWords)); setSeedRevealed(false); setSeedSavedConfirmed(false); setSeedAccounts([]); setSeedError(''); setSeedImportStatus(null) }}>Generate phrase</ActionButton>
+            </div>
+            {seedMnemonic ? (
+              <div>
+                <div style={{ position: 'relative' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: 12, borderRadius: 10, background: '#0e0a0c', border: '1px solid #2a1e22', filter: seedRevealed ? 'none' : 'blur(6px)', userSelect: seedRevealed ? 'text' : 'none' }}>
+                    {seedMnemonic.split(' ').map((word, i) => (
+                      <div key={i} style={{ fontFamily: 'monospace', fontSize: 13, color: '#f4e8ec' }}><span style={{ color: '#6f5560' }}>{i + 1}.</span> {word}</div>
+                    ))}
+                  </div>
+                  {!seedRevealed ? (
+                    <button onClick={() => setSeedRevealed(true)} style={{ position: 'absolute', inset: 0, margin: 'auto', width: 160, height: 40, border: '1px solid #3a2530', background: '#1a1014', color: '#ffd7de', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}>Tap to reveal</button>
+                  ) : null}
+                </div>
+                <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: '#1a0e10', border: '1px solid #4a2530', color: '#ff9aa6', fontSize: 12.5, lineHeight: 1.5 }}>
+                  ⚠ Write these {seedWords} words down on paper, in order. Don't screenshot or store them online. Lose them and the coins are gone; share them and they're stolen.
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={seedSavedConfirmed} onChange={(e) => setSeedSavedConfirmed(e.target.checked)} />
+                  <span style={{ color: '#f4e8ec' }}>I've written down my recovery phrase and stored it safely</span>
+                </label>
+                <div style={{ marginTop: 10 }}>
+                  <ActionButton tone="ok" disabled={!seedSavedConfirmed} onClick={() => { try { setSeedAccounts(deriveAccounts(seedMnemonic, 5)); setSeedError('') } catch (e) { setSeedError(e.message) } }}>Show my addresses</ActionButton>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ color: '#9a7a82', fontSize: 13 }}>Enter your 12 or 24-word recovery phrase, words separated by spaces.</div>
+            <textarea value={seedRestoreInput} onChange={(e) => setSeedRestoreInput(e.target.value)} rows={3} placeholder="word1 word2 word3 ..." spellCheck={false}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #2a1e22', background: '#0e0a0c', color: '#f4e8ec', fontFamily: 'monospace', fontSize: 13, boxSizing: 'border-box', resize: 'vertical' }} />
+            <div>
+              <ActionButton tone="ok" disabled={!seedRestoreInput.trim()} onClick={() => {
+                const m = seedRestoreInput.trim().replace(/\s+/g, ' ').toLowerCase()
+                if (!isValidMnemonic(m)) { setSeedError('That is not a valid BIP39 recovery phrase (check spelling and word count).'); setSeedAccounts([]); return }
+                try { setSeedMnemonic(m); setSeedAccounts(deriveAccounts(m, 5)); setSeedError(''); setSeedImportStatus(null) } catch (e) { setSeedError(e.message) }
+              }}>Restore wallet</ActionButton>
+            </div>
+          </div>
+        )}
+        {seedError ? <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: '#140f12', border: '1px solid #2a1e22', color: '#ff9aa6', fontSize: 13 }}>{seedError}</div> : null}
+      </Card>
+
+      {seedAccounts.length > 0 ? (
+        <Card title="Your Triangles addresses">
+          <div style={{ color: '#9a7a82', fontSize: 13, marginBottom: 12 }}>
+            Derived from your phrase. To have your node track, spend, and stake these, import them below —
+            importing rescans the chain and can take a few minutes per key.
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {seedAccounts.map((a) => (
+              <div key={a.index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '8px 10px', borderRadius: 8, background: '#0e0a0c', border: '1px solid #2a1e22' }}>
+                <div style={{ fontFamily: 'monospace', fontSize: 12.5, color: '#f4e8ec', wordBreak: 'break-all' }}><span style={{ color: '#6f5560' }}>#{a.index}</span> {a.address}</div>
+                <button onClick={() => { try { navigator.clipboard.writeText(a.address) } catch {} }} style={{ border: '1px solid #3a2530', background: '#120d10', color: '#d0b8c0', borderRadius: 8, padding: '6px 10px', cursor: 'pointer', flexShrink: 0 }}>Copy</button>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 14, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <ActionButton disabled={seedImportStatus === 'importing'} onClick={async () => {
+              setSeedImportStatus('importing')
+              try {
+                const res = await fetch('/api/seed/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keys: seedAccounts.map((a) => ({ wif: a.wif, label: 'seed:' + a.index })) }) })
+                const data = await res.json().catch(() => ({}))
+                setSeedImportStatus(res.ok && data.ok ? { ok: true, imported: data.imported } : { ok: false, msg: res.status === 403 ? 'Key import is disabled on this server (set TRI_ENABLE_WRITE_OPS=1).' : (data.error || `Import failed (${res.status})`) })
+              } catch (e) { setSeedImportStatus({ ok: false, msg: e.message }) }
+            }}>{seedImportStatus === 'importing' ? 'Importing (rescanning chain)…' : 'Import these keys into my node'}</ActionButton>
+            {seedImportStatus && seedImportStatus !== 'importing' ? (
+              <span style={{ color: seedImportStatus.ok ? '#8df0b1' : '#ff9aa6', fontSize: 13 }}>{seedImportStatus.ok ? `Imported ${seedImportStatus.imported} key(s).` : seedImportStatus.msg}</span>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
+    </div>
+  )
+
   const panelByTab = {
     overview: overviewPanel,
     receive: receivePanel,
@@ -1758,6 +1877,7 @@ export default function App() {
     addresses: addressesPanel,
     settings: settingsPanel,
     relay: relayPanel,
+    seed: seedWalletPanel,
     backup: backupPanel,
     debug: debugPanel,
   }

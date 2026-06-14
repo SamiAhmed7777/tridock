@@ -520,6 +520,43 @@ app.post('/api/wallet/address/new', async (req, res) => {
   }
 })
 
+// Import seed-phrase-derived private keys (WIF) into the node so it can track,
+// spend, and stake them. The phrase itself never reaches the server — only the
+// already-derived WIF keys. importprivkey rescans the chain, so this can be slow.
+app.post('/api/seed/import', async (req, res) => {
+  const nodeState = await readNodeState()
+  if (!enableWriteOps) {
+    return res.status(403).json({ ok: false, code: 'WRITE_OPS_DISABLED', error: 'Key import is disabled until write ops are explicitly enabled.', nodeState })
+  }
+  const { keys } = req.body || {}
+  if (!Array.isArray(keys) || keys.length === 0) {
+    return res.status(400).json({ ok: false, error: 'keys (array of {wif,label}) required' })
+  }
+  if (keys.length > 50) {
+    return res.status(413).json({ ok: false, error: 'too many keys in one request (max 50)' })
+  }
+  const node = getActiveNode()
+  let imported = 0
+  const errors = []
+  for (const k of keys) {
+    const wif = String((k && k.wif) || '')
+    const label = String((k && k.label) || 'seed').slice(0, 64)
+    if (!/^[1-9A-HJ-NP-Za-km-z]{40,120}$/.test(wif)) { errors.push('invalid wif format'); continue }
+    try {
+      await rpcCall(node.url, node.user, node.password, 'importprivkey', [wif, label])
+      imported++
+    } catch (e) {
+      const msg = String((e && e.message) || '')
+      if (/already|exists/i.test(msg)) imported++ // already present counts as success
+      else errors.push(msg)
+    }
+  }
+  if (imported === 0 && errors.length) {
+    return res.status(500).json({ ok: false, error: errors[0], nodeState })
+  }
+  res.json({ ok: true, imported, errors: errors.length ? errors : undefined, nodeState })
+})
+
 app.get('/api/wallet/backups', async (_req, res) => {
   // List available backup files from the exports directory
   try {
