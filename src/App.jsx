@@ -73,7 +73,7 @@ function StatusPill({ children, color = '#e8192f', background = 'rgba(232,25,47,
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 999, background, color, fontWeight: 700, fontSize: 12, border: '1px solid rgba(232,25,47,.2)' }}>{children}</span>
 }
 
-function ActionButton({ children, disabled = false, onClick, tone = 'default' }) {
+function ActionButton({ children, disabled = false, onClick, tone = 'default', style: styleOverride }) {
   const styles = {
     default: {
       border: disabled ? '1px solid #2a1e22' : '1px solid #4a2030',
@@ -97,7 +97,7 @@ function ActionButton({ children, disabled = false, onClick, tone = 'default' })
       boxShadow: disabled ? 'none' : '0 4px 16px rgba(232,25,47,.3)',
     },
   }
-  const style = styles[tone] || styles.default
+  const toneStyle = styles[tone] || styles.default
   return (
     <button
       onClick={onClick}
@@ -107,7 +107,8 @@ function ActionButton({ children, disabled = false, onClick, tone = 'default' })
         borderRadius: 10,
         cursor: disabled ? 'not-allowed' : 'pointer',
         fontWeight: 700,
-        ...style,
+        ...toneStyle,
+        ...styleOverride,
       }}
     >
       {children}
@@ -137,10 +138,18 @@ function TextArea({ label, placeholder, disabled = false, value = '', onChange }
   )
 }
 
+// Module-level display prefs, synced from Settings each render so every
+// formatAmount() call site reflects the toggles without threading props.
+let balancesHidden = false
+let displayUnit = 'TRI'
+
 function formatAmount(value) {
   if (value === null || value === undefined || value === '') return '—'
   const num = Number(value)
   if (Number.isNaN(num)) return String(value)
+  if (balancesHidden) return `••••• ${displayUnit}`
+  if (displayUnit === 'sat') return `${Math.round(num * 1e8).toLocaleString()} sat`
+  if (displayUnit === 'mTRI') return `${(num * 1000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 })} mTRI`
   return `${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })} TRI`
 }
 
@@ -187,6 +196,7 @@ function NavTabs({ active, onChange, badges = {} }) {
     ['contacts', 'Contacts'],
     ['addresses', 'Address Book'],
     ['settings', 'Settings'],
+    ['relay', 'Mesh Relay'],
     ['backup', 'Backup'],
     ['debug', 'Debug'],
   ]
@@ -318,12 +328,28 @@ export default function App() {
   const [editingContact, setEditingContact] = useState(null)
   const [contactForm, setContactForm] = useState({ name: '', address: '', label: '', note: '' })
 
-  // Settings
-  const [settings, setSettings] = useState({ currency: 'TRI', autoLockMinutes: 15, showBalances: true, onionRpc: '' })
+  // Settings — load persisted prefs on first render
+  const [settings, setSettings] = useState(() => {
+    const defaults = { currency: 'TRI', autoLockMinutes: 15, showBalances: true, onionRpc: '' }
+    try { return { ...defaults, ...JSON.parse(localStorage.getItem('tridock.settings') || '{}') } }
+    catch { return defaults }
+  })
   const [settingsSaved, setSettingsSaved] = useState('')
+
+  // Apply display prefs to the shared formatter, and persist on change
+  balancesHidden = !settings.showBalances
+  displayUnit = settings.currency || 'TRI'
+  useEffect(() => {
+    try { localStorage.setItem('tridock.settings', JSON.stringify(settings)) } catch { /* ignore */ }
+  }, [settings])
 
   // Send confirmation overlay
   const [sendConfirm, setSendConfirm] = useState(null)
+
+  // Mesh relay (broadcast a pre-signed raw tx, e.g. carried in over Meshtastic/LoRa)
+  const [relayHex, setRelayHex] = useState('')
+  const [relayStatus, setRelayStatus] = useState(null)
+  const [relayBusy, setRelayBusy] = useState(false)
 
   // Loading state
   const [initialLoad, setInitialLoad] = useState(true)
@@ -332,7 +358,7 @@ export default function App() {
   const countdownRef = useRef(null)
   useEffect(() => {
     const update = async () => {
-      const until = capabilities?.wallet?.unlockedUntil
+      const until = summary?.capabilities?.wallet?.unlockedUntil
       if (until && until > 0) {
         const remaining = until - Math.floor(Date.now() / 1000)
         setWalletCountdown(remaining > 0 ? remaining : 0)
@@ -354,7 +380,7 @@ export default function App() {
     update()
     const id = setInterval(update, 1000)
     return () => clearInterval(id)
-  }, [capabilities?.wallet?.unlockedUntil])
+  }, [summary?.capabilities?.wallet?.unlockedUntil])
 
   // Clear broadcast result when user starts editing a new send
   useEffect(() => {
@@ -1675,6 +1701,52 @@ export default function App() {
     </div>
   )
 
+  // ═══════════════════════════════════════════════════════════════
+  // MESH RELAY PANEL
+  // ═══════════════════════════════════════════════════════════════
+  const relayHexValid = !!relayHex && /^[0-9a-fA-F]+$/.test(relayHex) && relayHex.length % 2 === 0
+  const relayPanel = (
+    <div style={{ display: 'grid', gap: 16, maxWidth: 760 }}>
+      <Card title="Mesh relay — broadcast a signed transaction">
+        <div style={{ color: '#9a7a82', fontSize: 13, lineHeight: 1.6, marginBottom: 12 }}>
+          Paste a fully-signed raw transaction (hex) and broadcast it to the network through the active node.
+          This is pure transport — no keys are used here — so a transaction signed offline and carried in over
+          Meshtastic / LoRa or any out-of-band channel can still reach the chain.
+        </div>
+        <textarea value={relayHex} onChange={(e) => setRelayHex(e.target.value.trim())}
+          placeholder="0100000001…" spellCheck={false} rows={6}
+          style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #2a1e22', background: '#0e0a0c', color: '#f4e8ec', fontFamily: 'monospace', fontSize: 12, boxSizing: 'border-box', resize: 'vertical' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+          <ActionButton tone="ok" disabled={relayBusy || !relayHexValid}
+            onClick={async () => {
+              setRelayBusy(true); setRelayStatus(null)
+              try {
+                const res = await fetch('/api/relay/sendrawtransaction', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ hex: relayHex }),
+                })
+                const data = await res.json().catch(() => ({}))
+                if (res.ok && data.ok) { setRelayStatus({ ok: true, txid: data.txid }); setRelayHex('') }
+                else if (res.status === 403) setRelayStatus({ ok: false, msg: 'Mesh relay is disabled on this server. Enable it with TRI_ENABLE_MESH_RELAY=1.' })
+                else setRelayStatus({ ok: false, msg: data.error || `Relay failed (${res.status})` })
+              } catch (e) { setRelayStatus({ ok: false, msg: e.message }) }
+              finally { setRelayBusy(false) }
+            }}>
+            {relayBusy ? 'Broadcasting…' : 'Broadcast via relay'}
+          </ActionButton>
+          <span style={{ color: '#9a7a82', fontSize: 12 }}>
+            {relayHex ? (relayHexValid ? `${relayHex.length / 2} bytes` : 'not valid hex') : ''}
+          </span>
+        </div>
+        {relayStatus ? (
+          <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: '#140f12', border: '1px solid #2a1e22', color: relayStatus.ok ? '#8df0b1' : '#ff9aa6', fontSize: 13, wordBreak: 'break-all' }}>
+            {relayStatus.ok ? `Broadcast accepted — txid ${relayStatus.txid}` : relayStatus.msg}
+          </div>
+        ) : null}
+      </Card>
+    </div>
+  )
+
   const panelByTab = {
     overview: overviewPanel,
     receive: receivePanel,
@@ -1685,6 +1757,7 @@ export default function App() {
     contacts: contactsPanel,
     addresses: addressesPanel,
     settings: settingsPanel,
+    relay: relayPanel,
     backup: backupPanel,
     debug: debugPanel,
   }
