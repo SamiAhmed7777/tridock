@@ -16,7 +16,7 @@ services:
       TRI_INSTANCE_ID: tridock-hub
       TRI_WALLET_ID: primary
       TRI_ROLE: wallet
-      TRI_VERSION: "5.9.11"
+      TRI_VERSION: "5.9.14"
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
       TRI_PREFER_BOOTSTRAP: "1"

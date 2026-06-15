@@ -42,7 +42,7 @@ services:
       SEED_STARTUP_DELAY: "0"
 
       # ── Core Settings ────────────────────────────────────────────
-      TRI_VERSION: "5.9.11"
+      TRI_VERSION: "5.9.14"
       TRI_TOR_ENABLED: "1"
       TRI_BOOTSTRAP_ENABLED: "1"
       TRI_PREFER_BOOTSTRAP: "1"
