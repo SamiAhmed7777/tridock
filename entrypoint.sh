@@ -305,6 +305,14 @@ start_tor() {
   mkdir -p /tri/tor
   chmod 700 /tri/tor 2>/dev/null || true
 
+  # CRITICAL: Tor's hidden service dir MUST be 0700 or the daemon fails with
+  # "Permissions on directory ... are too permissive" / "Failed to configure
+  # rendezvous options" and exits. Tor creates the HiddenServiceDir on first
+  # start with umask-honoring perms (typically 0755) and then refuses to use it.
+  # Pre-create the dir with 0700 so Tor's auto-create step is a no-op.
+  mkdir -p /tri/tor/node
+  chmod 700 /tri/tor/node 2>/dev/null || true
+
   cat > /tri/tor/torrc <<TORRC
 SocksPort ${SOCKS_PORT}
 HiddenServiceDir /tri/tor/node
