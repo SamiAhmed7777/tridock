@@ -952,6 +952,20 @@ run_node() {
 
     set_status "starting" "Launching trianglesd (attempt $((retries + 1))/$MAX_RESTART_RETRIES)"
     log "Starting Triangles node in $MODE mode..."
+
+    # CRITICAL: Set LD_LIBRARY_PATH so the binary finds its bundled shared
+    # libraries (libsnappy, librocksdb, libstdc++, etc.) which live in
+    # BIN_DIR/runtime/lib and LIB_DIR. Without this, v5.9.14+ binaries fail
+    # with "error while loading shared libraries: libsnappy.so.1: cannot open
+    # shared object file" (pitfall #23 in the triangles SKILL).
+    #
+    # The legacy wrapper-rewrite trick (entrypoint.sh line 441) only fires when
+    # the binary is a script containing '/usr/lib/cryptographic-triangles/
+    # trianglesd' — but the v5.9.14 deb ships a raw ELF binary there, so the
+    # grep doesn't match and the wrapper is never generated. Set LD_LIBRARY_PATH
+    # directly in this shell so the binary loads correctly regardless of what
+    # the deb layout looks like.
+    export LD_LIBRARY_PATH="$BIN_DIR/runtime/lib:$LIB_DIR:${LD_LIBRARY_PATH:-}"
     "$TRI_BIN" "${TRI_ARGS[@]}" &
     TRI_PID=$!
     sleep 3
