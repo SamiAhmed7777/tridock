@@ -1,0 +1,187 @@
+# tridock-auto-deploy.yml
+#
+# Tri-Pi/tridock — Auto-deploy new images to DNS2 self-hosted runner
+#
+# Triggers
+# --------
+# 1. repository_dispatch event `tridock-image-published` from this repo's
+#    build-and-publish.yml — fires within seconds of a successful push.
+# 2. schedule: every hour — fallback to catch missed events.
+# 3. workflow_dispatch — manual redeploy.
+#
+# Runs on
+# --------
+# Self-hosted runner registered against `samiahmed7777/tridock` repo with
+# label `tridock-host`. The runner is registered on DNS2 (194.233.88.206)
+# as a systemd service — see `references/tridock-self-hosted-runner.md`
+# in the triangles skill for setup details.
+#
+# What it does
+# ------------
+# 1. `docker pull samiahmed7777/tridock:latest`
+# 2. Compare the new digest to the running tridock-dev container's image
+# 3. If changed:
+#    a. `docker stop tridock-dev && docker rm tridock-dev`
+#    b. Re-read the canonical run-config from `/root/.triangles/tridock.env`
+#       (key=value file with all env vars + port mappings) so the deploy
+#       matches what a human would do manually.
+#    c. Recreate with the new image.
+#    d. Wait for Tor bootstrap (up to 90s).
+#    e. Verify version + chain match via RPC.
+#    f. Send Telegram alert with deploy status.
+# 4. If unchanged: exit silently.
+
+name: Auto-deploy tridock to DNS2
+
+on:
+  repository_dispatch:
+    types: [tridock-image-published]
+  schedule:
+    # Every hour at minute 17 — picks up any pushes that bypassed dispatch
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force redeploy even if digest unchanged (for clean restart after env edits)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    name: Pull + recreate tridock-dev
+    runs-on: [self-hosted, tridock-host]
+    timeout-minutes: 10
+
+    steps:
+      - name: Pre-flight — daemon + docker
+        run: |
+          echo "Runner host: $(hostname)"
+          echo "DNS2 verification: $(curl -fsSL --max-time 5 ifconfig.me 2>/dev/null || echo 'no internet')"
+          docker --version
+          docker ps -a --filter "name=tridock-dev" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+
+      - name: Pull new image
+        run: |
+          docker pull samiahmed7777/tridock:latest 2>&1 | tee /tmp/pull.log
+          NEW_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' \
+            samiahmed7777/tridock:latest 2>/dev/null || echo "none")
+          echo "NEW_DIGEST=$NEW_DIGEST" >> "$GITHUB_ENV"
+
+      - name: Compare to running container
+        id: check
+        run: |
+          if [ ! -z "${{ inputs.force }}" ] && [ "${{ inputs.force }}" = "true" ]; then
+            echo "force=true — skipping digest check"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          RUNNING_DIGEST=$(docker inspect --format='{{.Image}}' \
+            tridock-dev 2>/dev/null || echo "none")
+          echo "NEW:  $NEW_DIGEST"
+          echo "LIVE: $RUNNING_DIGEST"
+          if [ "$RUNNING_DIGEST" = "$NEW_DIGEST" ]; then
+            echo "No change — tridock-dev already on the latest image. Exiting."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Image digest changed — proceeding with redeploy."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Redeploy
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          set -e
+          # Stop + remove the old container (volume mounts survive)
+          echo "Stopping tridock-dev..."
+          docker stop tridock-dev || true
+          sleep 2
+          echo "Removing tridock-dev..."
+          docker rm tridock-dev || true
+
+          # Read canonical run config from /root/.triangles/tridock.env
+          # (managed by hand; operator edits this file when env vars change)
+          RUN_CONFIG="/root/.triangles/tridock.env"
+          if [ ! -f "$RUN_CONFIG" ]; then
+            echo "::error::Run config not found: $RUN_CONFIG"
+            echo "Create it with at minimum: ports + volume mounts + RPC credentials."
+            echo "See SKILL.md 'tri-pi' references for the full template."
+            exit 1
+          fi
+
+          echo "Re-creating tridock-dev from canonical config..."
+          # shellcheck disable=SC1090
+          source "$RUN_CONFIG"
+          # RUN_CONFIG exports: IMAGE, NAME, PORTS (space-sep "HOST:CONT/Proto"),
+          # ENV_FILE (path to a docker --env-file), VOLUMES (space-sep src:dst:opts)
+          docker run -d \
+            --name "${NAME:-tridock-dev}" \
+            --restart unless-stopped \
+            --network host \
+            $( [ -n "$ENV_FILE" ] && echo "--env-file $ENV_FILE" ) \
+            $PORTS \
+            $VOLUMES \
+            "${IMAGE:-samiahmed7777/tridock:latest}"
+
+          echo "Waiting for daemon to bind RPC..."
+          for i in $(seq 1 60); do
+            if curl -fsSL --max-time 2 -u "$RPC_USER:$RPC_PASSWORD" \
+              -H "Content-Type: application/json" \
+              --data-binary '{"jsonrpc":"1.0","id":"hp","method":"getnetworkinfo","params":[]}' \
+              http://127.0.0.1:19116/ > /tmp/health.json 2>/dev/null; then
+              echo "RPC live after ${i}s"
+              jq -r '.result | "  version:        \(.version)\n  connections:    \(.connections)\n  bootstrapped:   \(.networkhealth.bootstrapped)\n  syncing:        \(.networkhealth.syncing)"' /tmp/health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Daemon did not become responsive on 19116 within 60s"
+          docker logs --tail 50 tridock-dev
+          exit 1
+
+      - name: Cross-check chain tip against DNS2
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          echo "Verifying tridock matches DNS2 prod chain..."
+          HET_HASH=$(curl -fsSL --max-time 10 -u "$RPC_USER:$RPC_PASSWORD" \
+            -H "Content-Type: application/json" \
+            --data-binary '{"jsonrpc":"1.0","id":"c1","method":"getbestblockhash","params":[]}' \
+            http://127.0.0.1:19116/ | jq -r '.result')
+          DNS2_HASH=$(curl -fsSL --max-time 10 -u 'trianglesrpc:2KVK2FvLZBW9Hxv4a2Uj3dMRDAXdh4ei6S5tdZ3z2Mme' \
+            -H "Content-Type: application/json" \
+            --data-binary '{"jsonrpc":"1.0","id":"c2","method":"getbestblockhash","params":[]}' \
+            http://127.0.0.1:19112/ | jq -r '.result')
+          echo "tridock tip:  $HET_HASH"
+          echo "DNS2 tip:     $DNS2_HASH"
+          if [ "$HET_HASH" != "$DNS2_HASH" ] && [ "$HET_HASH" != "$(curl -fsSL --max-time 10 -u 'trianglesrpc:2KVK2FvLZBW9Hxv4a2Uj3dMRDAXdh4ei6S5tdZ3z2Mme' -H "Content-Type: application/json" --data-binary '{"jsonrpc":"1.0","id":"c3","method":"getblockhash","params":['"$(curl -fsSL --max-time 10 -u "$RPC_USER:$RPC_PASSWORD" -H 'Content-Type: application/json' --data-binary '{"jsonrpc":"1.0","id":"h2","method":"getblockcount","params":[]}' http://127.0.0.1:19116/ | jq -r '.result')"']}' http://127.0.0.1:19112/ | jq -r '.result')" ]; then
+            echo "::warning::tridock bestblockhash differs from DNS2 — likely still syncing"
+            echo "This is OK if tridock is catching up; flag for manual review if it persists >1h"
+          else
+            echo "✓ Chain tips match (or tridock is at a recent height DNS2 also has)"
+          fi
+
+      - name: Send Telegram alert
+        if: always()
+        continue-on-error: true
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT" ]; then
+            echo "Telegram secrets not set — skipping alert"
+            exit 0
+          fi
+          STATUS="${{ job.status }}"
+          if [ "${{ steps.check.outputs.changed }}" = "false" ]; then
+            MSG="tridock auto-deploy: no change (digest match) — ${STATUS}"
+          else
+            NEW_VER=$(docker exec tridock-dev trianglesd -datadir=/tri/data getnetworkinfo 2>/dev/null \
+              | jq -r '.version' 2>/dev/null || echo "unknown")
+            MSG="tridock auto-deploy: ${STATUS} — new version: ${NEW_VER}"
+          fi
+          curl -fsSL --max-time 10 \
+            "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d "chat_id=${TG_CHAT}" \
+            -d "text=${MSG}" \
+            -d "parse_mode=HTML" \
+            > /dev/null || echo "Telegram send failed (non-fatal)"

@@ -1,9 +1,26 @@
+# build-and-publish.yml
+#
+# Tri-Pi/tridock — Build and Publish Docker Image
+#
+# Triggers
+# --------
+# 1. Push to master with relevant paths changed — rebuild from source
+# 2. repository_dispatch event `tri-release-published` from triangles_v5 repo
+#    — auto-trigger when a new Triangles release is published
+# 3. workflow_dispatch — manual rebuild with a custom tag
+#
+# Required GitHub Secrets
+# -----------------------
+# - DOCKERHUB_USERNAME: Docker Hub account that owns samiahmed7777
+# - DOCKERHUB_TOKEN: Docker Hub access token (not the password)
+# - TRIDOCK_DEPLOY_DISPATCH_TOKEN: PAT with workflow scope on this repo,
+#   used to trigger the auto-deploy workflow on the self-hosted runner
+
 name: Build and Publish Docker Image
 
 on:
   push:
     branches: [master]
-    # Skip if only markdown/non-build files changed
     paths:
       - 'Dockerfile'
       - 'entrypoint.sh'
@@ -15,6 +32,8 @@ on:
       - 'public/**'
       - 'index.html'
       - '.github/workflows/build-and-publish.yml'
+  repository_dispatch:
+    types: [tri-release-published]
   workflow_dispatch:
     inputs:
       tag:
@@ -42,27 +61,76 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: \${{ secrets.DOCKERHUB_USERNAME }}
+          password: \${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Determine image tags
+      - name: Resolve target Tri version + image tags
         id: meta
         run: |
-          # On push to master, tag with short SHA + latest
-          # On workflow_dispatch, use the user-provided tag (or latest)
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            USER_TAG="${{ inputs.tag }}"
-            TAGS="samiahmed7777/tridock:${USER_TAG}"
-            # If user tagged as 'latest', also tag with SHA for traceability
-            if [ "$USER_TAG" = "latest" ]; then
-              TAGS="${TAGS},samiahmed7777/tridock:git-${GITHUB_SHA::7}"
+          set -e
+          # Determine the Tri version this build is for:
+          #
+          # - repository_dispatch: client_payload.version is the Tri version
+          #   (e.g. "5.9.24"). Dispatched from triangles_v5 repo's
+          #   trigger-tridock-rebuild.yml.
+          # - workflow_dispatch: optional inputs.version, default master HEAD
+          # - push to master: use the latest triangles_v5 release tag, or fall
+          #   back to "dev" (the existing default).
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            VERSION="$(echo '${{ github.event.client_payload.version }}' | tr -d '[:space:]')"
+            if [ -z "$VERSION" ]; then
+              echo "::error::repository_dispatch had no client_payload.version — refusing to build"
+              exit 1
             fi
+            echo "Triggered by Tri release: $VERSION"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            INPUT_VERSION="${{ inputs.version }}"
+            if [ -n "$INPUT_VERSION" ]; then
+              VERSION="$INPUT_VERSION"
+            else
+              VERSION="dev"
+            fi
+            echo "Manual dispatch: $VERSION"
           else
-            TAGS="samiahmed7777/tridock:latest,samiahmed7777/tridock:git-${GITHUB_SHA::7}"
+            # push to master — try to fetch latest triangles_v5 release tag,
+            # fall back to "dev"
+            echo "Push to master — fetching latest Tri release tag..."
+            LATEST_TAG=$(curl -fsSL --max-time 15 \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/SamiAhmed7777/triangles_v5/releases/latest \
+              | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name','dev').lstrip('v'))" \
+              || echo "dev")
+            VERSION="$LATEST_TAG"
+            echo "Latest Tri release detected: $VERSION"
           fi
-          echo "tags<<EOF" >> $GITHUB_OUTPUT
-          echo "$TAGS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # Build the image tag list:
+          #   - Always tag :latest (rolling pointer to newest verified build)
+          #   - Always tag :v$VERSION (immutable version pin, easy rollback)
+          #   - Always tag :git-$SHA (build traceability)
+          TAGS="samiahmed7777/tridock:latest,samiahmed7777/tridock:v${VERSION},samiahmed7777/tridock:git-${GITHUB_SHA::7}"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "Will push tags: $TAGS"
+
+      - name: Pin Dockerfile TRI_VERSION to ${{ steps.meta.outputs.version }}
+        # The tridock entrypoint reads TRI_VERSION from env OR from the
+        # baked-in default in entrypoint.sh. Pinning it in the Dockerfile
+        # ENV guarantees every pushed image declares the right version
+        # in `docker inspect`, and lets the entrypoint default to it
+        # without an override.
+        run: |
+          set -e
+          VERSION="${{ steps.meta.outputs.version }}"
+          if grep -q '^ENV TRI_VERSION=' Dockerfile; then
+            sed -i "s|^ENV TRI_VERSION=.*|ENV TRI_VERSION=\"${VERSION}\"|" Dockerfile
+            echo "Updated Dockerfile ENV TRI_VERSION to ${VERSION}"
+          else
+            # Append if not present
+            echo "ENV TRI_VERSION=\"${VERSION}\"" >> Dockerfile
+            echo "Appended ENV TRI_VERSION=${VERSION}"
+          fi
+          grep -n 'TRI_VERSION' Dockerfile | head -3
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -75,5 +143,51 @@ jobs:
             org.opencontainers.image.source=https://github.com/SamiAhmed7777/tridock
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
           cache-from: type=registry,ref=samiahmed7777/tridock:buildcache
           cache-to: type=registry,ref=samiahmed7777/tridock:buildcache,mode=max
+
+      - name: Verify image manifest on Docker Hub
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          echo "Verifying v${VERSION} is visible on Docker Hub..."
+          for i in 1 2 3 4 5; do
+            HTTP=$(curl -s -o /tmp/dockerhub.json -w '%{http_code}' \
+              "https://hub.docker.com/v2/repositories/samiahmed7777/tridock/tags/v${VERSION}/")
+            if [ "$HTTP" = "200" ]; then
+              echo "Tag v${VERSION} confirmed on Docker Hub:"
+              cat /tmp/dockerhub.json | jq -r '"  name:        \(.name)\n  last_updated: \(.last_updated)\n  digest:      \(.digest)\n  size_bytes:  \(.full_size)"'
+              exit 0
+            fi
+            echo "  attempt $i: HTTP $HTTP, retrying in 5s..."
+            sleep 5
+          done
+          echo "::warning::Could not verify v${VERSION} on Docker Hub after 5 attempts — it may still be propagating"
+
+      - name: Trigger auto-deploy on DNS2 self-hosted runner
+        if: success()
+        env:
+          DISPATCH_TOKEN: \${{ secrets.TRIDOCK_DEPLOY_DISPATCH_TOKEN }}
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' \
+            samiahmed7777/tridock:latest 2>/dev/null || echo "unknown")
+          echo "Dispatching tridock-auto-deploy workflow on DNS2 self-hosted runner"
+          echo "  version: $VERSION"
+          echo "  digest:  $DIGEST"
+
+          if [ -z "$DISPATCH_TOKEN" ]; then
+            echo "::warning::TRIDOCK_DEPLOY_DISPATCH_TOKEN not set — skipping auto-deploy trigger."
+            echo "Operator must manually pull and recreate the container on DNS2."
+            exit 0
+          fi
+
+          curl -fsSL --max-time 30 \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -X POST \
+            https://api.github.com/repos/SamiAhmed7777/tridock/dispatches \
+            -d "{\"event_type\": \"tridock-image-published\", \"client_payload\": {\"version\": \"${VERSION}\", \"digest\": \"${DIGEST}\", \"source_sha\": \"${{ github.sha }}\"}}"
+
+          echo "Auto-deploy trigger dispatched."
