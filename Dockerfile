@@ -70,7 +70,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY entrypoint.sh /entrypoint.sh
 COPY healthcheck.sh /healthcheck.sh
 COPY tridock.sh /usr/local/bin/tridock
-RUN chmod +x /entrypoint.sh /healthcheck.sh /usr/local/bin/tridock
+COPY tridock-doctor.sh /usr/local/bin/tridock-doctor
+RUN chmod +x /entrypoint.sh /healthcheck.sh /usr/local/bin/tridock /usr/local/bin/tridock-doctor
 
 VOLUME ["/tri/data", "/tri/bootstrap", "/tri/cache", "/tri/state", "/tri/backups", "/tri/config", "/tri/ui-data", "/tri/logs"]
 

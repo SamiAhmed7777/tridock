@@ -130,6 +130,11 @@ ROLE_FILE="$STATE_DIR/role"
 CAPABILITIES_FILE="$STATE_DIR/capabilities.json"
 PATHS_FILE="$STATE_DIR/paths.json"
 WALLET_EXPORT_FILE="$STATE_DIR/wallet-export-path"
+RESTART_CLEANUP_LOG="$STATE_DIR/restart-cleanups.log"
+# Tor state path — daemon reads/writes this; if it becomes a directory instead
+# of a file, daemon exits with "Triangles requires Tor to operate" (lesson
+# from 2026-06-23 tridock incident). Detected by check_tor_state().
+TOR_STATE_FILE="$DATA_DIR/tor_data/state"
 
 SOCKS_PORT="${TOR_SOCKS_PORT:-9050}"
 TRI_PID=""
@@ -671,6 +676,137 @@ check_wallet() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# Tor state validation — LESSON 2026-06-23 tridock incident
+#
+# Background: if /tri/data/tor_data/state is a non-empty directory instead of a
+# regular file, trianglesd reads it as a corrupt state and exits with
+# "Triangles requires Tor to operate". The restart loop counts up and the
+# container dies after MAX_RESTART_RETRIES. We detect this case explicitly
+# and repair it.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+check_tor_state() {
+  # If no state file exists, that's normal — Tor will create it on first start.
+  [ -e "$TOR_STATE_FILE" ] || return 0
+
+  # Case 1: it's a directory — most common failure mode
+  if [ -d "$TOR_STATE_FILE" ]; then
+    warn "Tor state at $TOR_STATE_FILE is a directory, not a file — daemon cannot start"
+    if [ -z "${AUTO_REPAIR_TOR_STATE:-}" ] || [ "$AUTO_REPAIR_TOR_STATE" != "0" ]; then
+      local ts
+      ts=$(date +%Y%m%d-%H%M%S)
+      local archive="${TOR_STATE_FILE}.corrupt-${ts}"
+      warn "Archiving to $archive and removing"
+      mv "$TOR_STATE_FILE" "$archive" 2>/dev/null || rm -rf "$TOR_STATE_FILE" 2>/dev/null || true
+      log "Tor state repaired — Tor will recreate on next start"
+      return 0
+    fi
+    return 1
+  fi
+
+  # Case 2: it's a symlink — could be a leftover from a botched recovery
+  if [ -L "$TOR_STATE_FILE" ]; then
+    warn "Tor state at $TOR_STATE_FILE is a symlink — replacing with regular file"
+    rm -f "$TOR_STATE_FILE" 2>/dev/null || true
+    return 0
+  fi
+
+  # Case 3: it's a regular file — validate size and content
+  local size
+  size=$(stat -c%s "$TOR_STATE_FILE" 2>/dev/null || echo 0)
+  if [ "$size" -eq 0 ]; then
+    # Empty file is suspicious but not necessarily fatal — Tor recreates it.
+    # Just log a warning.
+    warn "Tor state file is empty (0 bytes) — Tor will regenerate"
+    return 0
+  fi
+
+  # Tor state files start with "Tor\0" magic or are gzip-compressed keys/etc.
+  # We don't strictly validate the magic because the format varies by Tor version,
+  # but we do require the file to be readable.
+  if [ ! -r "$TOR_STATE_FILE" ]; then
+    warn "Tor state file is not readable — check filesystem permissions"
+    return 1
+  fi
+
+  return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Restart-loop preflight — LESSON 2026-06-23 tridock incident
+#
+# Background: when trianglesd dies and the restart loop kicks in, the child Tor
+# process spawned during the previous iteration may still be running, holding
+# the SOCKS port. The new trianglesd fails to bind to Tor's proxy and exits
+# silently. After MAX_RESTART_RETRIES the container gives up.
+#
+# preflight_restart() runs at the top of every loop iteration to:
+#   1. Clean up any orphaned tor process from a previous iteration
+#   2. Validate Tor state file integrity
+#   3. Remove stale Tor lock files
+#   4. Wait briefly for SOCKS port to free up if still bound
+# ═══════════════════════════════════════════════════════════════════════════════
+
+log_restart_cleanup() {
+  local msg="$1"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [restart-cleanup] $msg" >> "$RESTART_CLEANUP_LOG"
+  log "$msg"
+}
+
+preflight_restart() {
+  local attempt="${1:-?}"
+
+  # Step 1: detect orphaned tor process from previous iteration
+  # We match on data-dir string to avoid killing the wrong tor
+  # (e.g. system tor for another service).
+  local orphan_tor
+  orphan_tor=$(pgrep -f "DataDirectory $DATA_DIR/tor" 2>/dev/null || true)
+  if [ -n "$orphan_tor" ]; then
+    log_restart_cleanup "Killing orphaned tor (PID $orphan_tor) from previous iteration"
+    kill -INT "$orphan_tor" 2>/dev/null || true
+    # Wait up to 5s for graceful shutdown
+    local i
+    for i in 1 2 3 4 5; do
+      kill -0 "$orphan_tor" 2>/dev/null || break
+      sleep 1
+    done
+    # Force kill if still alive
+    kill -KILL "$orphan_tor" 2>/dev/null || true
+  fi
+
+  # Step 2: clear stale Tor lock files
+  if [ -f "$DATA_DIR/tor/lock" ]; then
+    log_restart_cleanup "Removing stale Tor lock file $DATA_DIR/tor/lock"
+    rm -f "$DATA_DIR/tor/lock" 2>/dev/null || true
+  fi
+
+  # Step 3: validate Tor state integrity
+  if ! check_tor_state; then
+    warn "Tor state check failed — Tor will be reinitialized"
+    # Note: check_tor_state already attempted repair if AUTO_REPAIR_TOR_STATE allows
+  fi
+
+  # Step 4: wait for SOCKS port to actually be free
+  if [ -n "${SOCKS_PORT:-}" ]; then
+    local wait_count=0
+    while [ "$wait_count" -lt 10 ]; do
+      if ! ss -ltn 2>/dev/null | grep -q ":${SOCKS_PORT} "; then
+        break
+      fi
+      sleep 1
+      wait_count=$((wait_count + 1))
+    done
+    if [ "$wait_count" -ge 10 ]; then
+      warn "SOCKS port $SOCKS_PORT still bound after 10s — proceeding anyway"
+      log_restart_cleanup "SOCKS port $SOCKS_PORT did not free up within 10s"
+    fi
+  fi
+
+  log_restart_cleanup "Preflight complete for attempt $attempt"
+  return 0
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # Chain management — FIXED: bootstrap uses clearnet, excludes triangles.conf
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -942,6 +1078,12 @@ run_node() {
   local retries=0
 
   while [ "$retries" -lt "$MAX_RESTART_RETRIES" ]; do
+    # LESSON 2026-06-23: clean up orphaned Tor and validate state from any
+    # previous iteration BEFORE attempting to start the daemon again. Without
+    # this, a stale Tor holding the SOCKS port causes the new trianglesd to
+    # exit silently, and the loop exhausts retries.
+    preflight_restart "$((retries + 1))"
+
     build_args
 
     # Seed startup delay to prevent simultaneous contamination
@@ -1114,6 +1256,12 @@ main() {
 
   # Wallet integrity check before daemon start
   check_wallet
+
+  # LESSON 2026-06-23: validate Tor state before starting Tor.
+  # If tor_data/state is a directory (from a botched recovery or partial write),
+  # start_tor will succeed but trianglesd will exit with "Triangles requires Tor
+  # to operate" because it can't parse the directory as state.
+  check_tor_state
 
   start_tor
 

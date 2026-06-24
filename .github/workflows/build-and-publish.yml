@@ -26,11 +26,14 @@ on:
       - 'entrypoint.sh'
       - 'healthcheck.sh'
       - 'tridock.sh'
+      - 'tridock-doctor.sh'
+      - 'tests/**'
       - 'package*.json'
       - 'server.mjs'
       - 'src/**'
       - 'public/**'
       - 'index.html'
+      - '.dockerignore'
       - '.github/workflows/build-and-publish.yml'
   repository_dispatch:
     types: [tri-release-published]

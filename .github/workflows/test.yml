@@ -1,0 +1,86 @@
+# test.yml — Run shellcheck + tridock test suite
+#
+# Triggers:
+#   - Push to any branch with relevant files changed
+#   - Pull request against master
+#   - Manual workflow_dispatch
+#
+# This workflow validates the entrypoint and doctor without building the full
+# Docker image. Cheap (~30s), runs on every PR.
+
+name: Tests
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'entrypoint.sh'
+      - 'tridock-doctor.sh'
+      - 'healthcheck.sh'
+      - 'tests/**'
+      - '.github/workflows/test.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'entrypoint.sh'
+      - 'tridock-doctor.sh'
+      - 'healthcheck.sh'
+      - 'tests/**'
+      - '.github/workflows/test.yml'
+  workflow_dispatch:
+
+jobs:
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck (errors only)
+        run: |
+          set -e
+          for f in entrypoint.sh tridock-doctor.sh healthcheck.sh tridock.sh tests/*.sh; do
+            if [ -f "$f" ]; then
+              echo "→ Checking $f"
+              shellcheck -S error "$f"
+            fi
+          done
+
+      - name: Run shellcheck (warnings — non-fatal)
+        continue-on-error: true
+        run: |
+          for f in entrypoint.sh tridock-doctor.sh healthcheck.sh tests/*.sh; do
+            if [ -f "$f" ]; then
+              echo "→ Warnings for $f:"
+              shellcheck -S warning "$f" || true
+            fi
+          done
+
+  bash-syntax:
+    name: Bash syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n all shell scripts
+        run: |
+          set -e
+          for f in entrypoint.sh tridock-doctor.sh healthcheck.sh tridock.sh tests/*.sh; do
+            if [ -f "$f" ]; then
+              echo "→ Syntax check: $f"
+              bash -n "$f"
+            fi
+          done
+
+  test-suite:
+    name: Test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: bash tests/test_tridock.sh
