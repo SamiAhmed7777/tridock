@@ -65,7 +65,10 @@ TRI_PORT="${TRI_PORT:-24112}"
 MAX_CONNECTIONS="${TRI_MAX_CONNECTIONS:-64}"
 DBCACHE="${TRI_DBCACHE:-512}"
 RPC_USER="${TRI_RPCUSER:-tri}"
-RPC_PASSWORD="${TRI_RPCPASSWORD:-tri}"
+# Default password is randomly generated (24 hex chars) and differs from RPC_USER.
+# Previous default was the literal string "tri" — same as RPC_USER — which made
+# trianglesd refuse to start with "RPC user and password must differ".
+RPC_PASSWORD="${TRI_RPCPASSWORD:-$(head -c 12 /dev/urandom | xxd -p)}"
 RPC_PORT="${TRI_RPCPORT:-19112}"
 ADDNODE="${TRI_ADDNODE:-}"
 EXTERNAL_IP="${TRI_EXTERNAL_IP:-}"
