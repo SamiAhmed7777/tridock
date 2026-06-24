@@ -201,6 +201,78 @@ See [docs/recovery.md](docs/recovery.md) for the full recovery guide.
 
 ---
 
+## Diagnostics
+
+TRIdock ships with `tridock-doctor.sh`, a read-only inspection tool that reports the container's health without modifying anything. It checks the daemon process, Tor state, wallet integrity, chain blocks, disk space, and lifecycle state.
+
+### Running the doctor
+
+```bash
+# Human-readable report
+docker exec tridock tridock-doctor.sh
+
+# JSON for monitoring / Alertmanager / Prometheus
+docker exec tridock tridock-doctor.sh --json
+
+# Single-line summary for scripts
+docker exec tridock tridock-doctor.sh --quiet
+```
+
+### Example output
+
+```
+TRIdock Diagnostic Report
+=========================
+Data dir:  /tri/data
+State dir: /tri/state
+
+  ℹ  lifecycle-status              running
+  ℹ  binary                        /tri/data/bin/trianglesd (v5.9.24)
+  ℹ  daemon-running                trianglesd PID 1234
+  ℹ  tor-state                     /tri/data/tor_data/state (10007 bytes)
+  ℹ  tor-running                   tor process active
+  ℹ  socks-port                    port 9050 listening
+  ℹ  wallet                        /tri/data/wallet.dat (61440 bytes)
+  ℹ  chain-blocks                  /tri/data/blk0001.dat (985341719 bytes)
+  ℹ  disk-space                    21G free on /tri/data
+  ℹ  restart-cleanups              no cleanup events recorded
+  ℹ  ready-marker                  node-ready exists — healthcheck will pass
+
+Status: ✓ clean
+```
+
+### Exit codes
+
+| Code | Meaning | Action |
+|------|---------|--------|
+| 0 | clean | none |
+| 1 | warning | monitor, possibly upgrade |
+| 2 | fail-recoverable | `docker restart tridock` should fix |
+| 3 | fail-fatal | manual intervention required (see finding details) |
+
+### Restart-loop safety
+
+Since the 2026-06-23 incident, `entrypoint.sh` runs a `preflight_restart()` cleanup at the top of every `run_node` loop iteration. This:
+
+- Kills orphaned Tor processes from previous iterations (matched on data dir, never bare `pkill`)
+- Removes stale `/tri/data/tor/lock` files
+- Validates `/tri/data/tor_data/state` is a regular file (not a directory)
+- Waits up to 10s for the SOCKS port to free
+
+Every cleanup action is logged to `/tri/state/restart-cleanups.log` with UTC timestamps. The doctor reports this log and warns if cleanup events are firing too often.
+
+### Environment overrides
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `TRI_DATA_DIR` | `/tri/data` | chain data + wallet + tor state |
+| `TRI_STATE_DIR` | `/tri/state` | lifecycle status files |
+| `TRI_BIN_DIR` | `/tri/data/bin` | trianglesd binary |
+| `TRI_TOR_SOCKS_PORT` | `9050` | Tor SOCKS port |
+| `AUTO_REPAIR_TOR_STATE` | `1` | auto-repair tor_data/state if directory |
+
+---
+
 ## Architecture
 
 ```

@@ -177,3 +177,98 @@ verify_canonical() {
 7. **Limit restart loops** — max retries with clear error state
 8. **Sequential seed recovery** — don't restart all 4 simultaneously (causes peer contamination)
 9. **Verify canonical chain** after bootstrap, not just block count
+
+---
+
+# TRIdock Lessons Learned — 2026-06-23 Incident
+
+## Summary
+
+After the 2026-04 incident, all four production tridock nodes had been running cleanly for ~2 months. On 2026-06-23, a coordinated upgrade of the Triangles daemon to v5.9.24 across all four nodes revealed three new failure modes that the original fixes did not cover. The most acute was on `tridock-dev`, which spent 14 hours in a silent restart-loop because:
+
+1. The new daemon died shortly after starting
+2. The orphaned `tor` process from the previous iteration was still holding the SOCKS port
+3. The Tor state file at `/tri/data/tor_data/state` was a non-empty directory, not a file
+4. The restart loop counted up to MAX_RESTART_RETRIES (10) and gave up — but only after the user manually intervened by SSHing in and running `pkill tor; rm -rf /tri/data/tor_data/state; trianglesd`
+
+## Bugs Found and Fixed
+
+### 11. Orphaned Tor squatting SOCKS port during restart loop
+
+**Symptom:** `trianglesd` exits within 3 seconds of starting. Container's `run_node` restart loop kicks in, but the next iteration starts a new `trianglesd` that again fails to bind. After MAX_RESTART_RETRIES, container dies.
+
+**Root cause:** When `trianglesd` dies, the `tor` process it spawned (via `start_tor`) is **not** killed. The restart loop calls `build_args` and starts a new `trianglesd`, but the orphaned `tor` still holds the SOCKS port. The new `trianglesd` exits silently because it can't connect to Tor. The original 2026-04 fix only handled initial Tor startup, not Tor spawned during a restart iteration.
+
+**Fix:** Added `preflight_restart()` function called at the top of every `run_node` loop iteration. It:
+
+- Detects orphaned Tor via `pgrep -f "DataDirectory $DATA_DIR/tor"` (matches on data dir, never bare `pgrep tor`)
+- Sends SIGINT, waits 5s, then SIGKILL if needed
+- Removes stale `$DATA_DIR/tor/lock`
+- Validates Tor state file integrity
+- Waits up to 10s for SOCKS port to actually free up
+
+**Lesson:** Any child process spawned by the daemon must be reaped and re-validated between restart iterations. PID-file-based lifecycle tracking is more reliable than `pkill <name>`, which can match unrelated system processes.
+
+### 12. Non-empty `tor_data/state` directory breaks daemon startup
+
+**Symptom:** `trianglesd` exits with `Triangles requires Tor to operate` and the log shows no further detail. Restart loop counts up. Container dies after MAX_RESTART_RETRIES.
+
+**Root cause:** `/tri/data/tor_data/state` had become a non-empty directory instead of a regular file. Most likely from an aborted `mv` during a previous recovery attempt, or from filesystem corruption. The daemon's Tor library opens `state` as a file and fails to parse it as a directory. The original 2026-04 LESSONS_LEARNED mentioned wallet corruption but did not cover Tor state corruption.
+
+**Fix:** Added `check_tor_state()` function called in `main()` before `start_tor()` (and re-validated by `preflight_restart()` on every iteration):
+
+- If `state` is a directory → archive to `state.corrupt-<ts>` and remove
+- If `state` is a symlink → remove and let Tor recreate
+- If `state` is a 0-byte file → log warning, let Tor regenerate
+- If `state` is unreadable → return failure, surface as fail-recoverable in `tridock-doctor.sh`
+- Auto-repair behavior can be disabled with `AUTO_REPAIR_TOR_STATE=0`
+
+**Lesson:** Containers share state with the host via Docker volumes. A botched recovery on the host can leave a directory where the daemon expects a file. Validate file types, not just file existence.
+
+### 13. Restart loop fires many times silently — no observability into why
+
+**Symptom:** After bug #11 hit, `tridock-dev` spent 14 hours restarting 10 times per iteration cycle. There was no way to see from outside the container what was failing. The `/tri/state/status` file just said `error`.
+
+**Fix:** Added `RESTART_CLEANUP_LOG="$STATE_DIR/restart-cleanups.log"` — appended on every `preflight_restart()` call with timestamped events:
+
+```
+2026-06-23T14:32:11Z [restart-cleanup] Killing orphaned tor (PID 265) from previous iteration
+2026-06-23T14:32:11Z [restart-cleanup] Removing stale Tor lock file /tri/data/tor/lock
+2026-06-23T14:32:11Z [restart-cleanup] Preflight complete for attempt 1
+```
+
+The `tridock-doctor.sh` reads this log and warns if cleanup events are firing too often (default threshold: 50 events in the most recent 100 lines).
+
+**Lesson:** When the main restart loop fails, every preflight cleanup should leave a breadcrumb. Container restart counts without context are noise.
+
+### 14. No diagnostic tool for live container state
+
+**Symptom:** When the user reported "tridock-dev is not responding", the only diagnostic option was to docker exec into the container and run a manual chain of `pgrep`, `cat /tri/state/*`, `ls -la /tri/data/tor_data/`. Slow and error-prone.
+
+**Fix:** Added `tridock-doctor.sh` — a read-only inspection tool analogous to `tri-pi-doctor.sh` for native installs:
+
+- 11 checks covering lifecycle status, binary, daemon process, Tor state file, Tor process, SOCKS port, wallet, chain blocks, disk space, restart cleanups, ready marker
+- Outputs human-readable report by default, JSON via `--json` for monitoring integration
+- Exit codes: 0=clean, 1=warning, 2=fail-recoverable, 3=fail-fatal
+- Matches processes by datadir string to avoid false positives from system Tor or other trianglesd instances
+
+**Lesson:** For containerized services, the doctor must run inside the container but expose the same status to monitoring tools as if it were a host-level check. `--json` mode is essential for any Prometheus/Alertmanager wiring.
+
+## Process Lessons (additions)
+
+10. **Always match on data-dir string for process kills** — `pkill trianglesd` and `pkill tor` are dangerous; they can match unrelated system processes. Always use `pgrep -f "datadir=/path"` or `pgrep -f "DataDirectory /path"`.
+11. **Validate file types, not just file existence** — `test -e /foo/state` passes for directories too. Daemon libraries expect files and silently exit on directory-shaped inputs.
+12. **Leave breadcrumbs in restart loops** — every cleanup action should append to a log file. Container restart counts without context are useless for debugging.
+
+## Timeline of the 2026-06-23 Incident
+
+| Time (UTC) | Event |
+|------------|-------|
+| 14:18 | Upgraded `tridock-dev` to v5.9.24, daemon started normally |
+| 14:21 | First peer connection, 6 connections, height 2,207,680 |
+| 14:24 | User noticed container restart count climbing |
+| 14:26 | `docker exec` revealed Tor holding SOCKS port, daemon not running |
+| 14:32 | User manually killed Tor, removed tor_data/state, daemon started |
+| 14:33 | `trianglesd` running cleanly, 6+ connections, syncing |
+| ~24h | All four nodes stable on v5.9.24 |
+| Day +1 | Hermes traced the bug to `run_node` lacking a preflight cleanup step |
