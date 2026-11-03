@@ -65,8 +65,8 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: \${{ secrets.DOCKERHUB_USERNAME }}
-          password: \${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Resolve target Tri version + image tags
         id: meta
@@ -171,7 +171,7 @@ jobs:
       - name: Trigger auto-deploy on DNS2 self-hosted runner
         if: success()
         env:
-          DISPATCH_TOKEN: \${{ secrets.TRIDOCK_DEPLOY_DISPATCH_TOKEN }}
+          DISPATCH_TOKEN: ${{ secrets.TRIDOCK_DEPLOY_DISPATCH_TOKEN }}
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
           DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' \
