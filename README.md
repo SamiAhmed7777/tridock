@@ -1,12 +1,40 @@
 # TRIdock
 
-**Docker-first Triangles node with built-in web wallet, Tor support, auto-bootstrap, and multi-node management.**
+**Docker-first Triangles node — TRI7 era (tri7d) — with Tor support, modes for full/seed/staking, and P2P gap-fill sync.**
 
-[![GitHub](https://img.shields.io/badge/github-tridock-blue?logo=github)](https://github.com/SamiAhmed7777/tridock)
-[![Docker](https://img.shields.io/badge/docker-samiahmed7777%2Ftridock-blue?logo=docker)](https://hub.docker.com/r/samiahmed7777/tridock)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-
----
+> ## 🆕 TRI7 era — this image now packages tri7d
+>
+> As of the TRI7 cutover, TRIdock's primary image (`samiahmed7777/tridock:tri7`,
+> built from [`tri7.Dockerfile`](tri7.Dockerfile)) packages **tri7d** — the
+> modern Rust full-node client from [tri7](https://github.com/SamiAhmed7777/tri7)
+> (`follow_tip --forever`). tri7d replays the legacy chain byte-for-byte, so no
+> chain migration is needed.
+>
+> **Ports:** RPC **19112** (tri7d binds loopback-only; a socat bridge publishes
+> it in the container), inbound P2P **24113**, tor SOCKS 9050 (bundled, internal).
+> **State:** VOLUME `/var/lib/tri7`, runs as non-root user `tri7`.
+>
+> **Modes** (`TRI_MODE`):
+> - `full` — follower with the full block store (default)
+> - `seed` — follow + serve (relay node)
+> - `staking` — adds `stake=1` to `triangles.conf`. ⚠️ **STAKING NEEDS A WALLET:
+>   mount your wallet dir at `/var/lib/tri7/wallet` (e.g.
+>   `-v ./wallet:/var/lib/tri7/wallet:ro`) — the container REFUSES to start in
+>   staking mode without it.** tri7d itself never touches keys; wallet/staking
+>   operations go through the RPC surface.
+>
+> **Bootstrap/sync:** the legacy `bootstrap.cryptographic-triangles.org`
+> snapshot URLs are DEAD and their leveldb tarballs were never compatible with
+> tri7d. The default is a **fresh sync via P2P gap-fill** (tri7d backfills
+> headers + blocks from peers). If you host a tri7-era `blk0001.dat` archive —
+> the canonical one lives on DNS2 at `/root/.triangles/blk0001.dat` — serve it
+> over HTTP and set `TRI_BOOTSTRAP_URL` (+ `TRI_BOOTSTRAP_SHA256`) to fetch it
+> before first start.
+>
+> **Rollback:** the LEGACY C++-client appliance (trianglesd + web wallet UI) is
+> still available as the `samiahmed7777/tridock:legacy` tag — see
+> [`docker-compose.legacy.yml`](docker-compose.legacy.yml). The rest of this
+> README documents the legacy appliance.
 
 ## What is TRIdock?
 
