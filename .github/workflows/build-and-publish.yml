@@ -59,6 +59,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout tri7 source
+        uses: actions/checkout@v4
+        with:
+          repository: SamiAhmed7777/tri7
+          ref: master
+          path: tri7
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -140,6 +146,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          build-contexts: tri7=${{ github.workspace }}/tri7
           file: ./tri7.Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
