@@ -22,7 +22,8 @@ on:
   push:
     branches: [master]
     paths:
-      - 'Dockerfile'
+      - 'tri7.Dockerfile'
+      - 'entrypoint-tri7.sh'
       - 'entrypoint.sh'
       - 'healthcheck.sh'
       - 'tridock.sh'
@@ -125,7 +126,7 @@ jobs:
         run: |
           set -e
           VERSION="${{ steps.meta.outputs.version }}"
-          if grep -q '^ENV TRI_VERSION=' Dockerfile; then
+          if [ -f Dockerfile ] && grep -q '^ENV TRI_VERSION=' Dockerfile; then
             sed -i "s|^ENV TRI_VERSION=.*|ENV TRI_VERSION=\"${VERSION}\"|" Dockerfile
             echo "Updated Dockerfile ENV TRI_VERSION to ${VERSION}"
           else
@@ -139,7 +140,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
+          file: ./tri7.Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
